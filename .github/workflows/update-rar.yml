@@ -1,0 +1,43 @@
+name: update-rar
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "RAR version (example: 7.21)"
+        required: true
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update formula
+        run: scripts/update-rar.sh "${{ inputs.version }}"
+
+      - name: Validate formula
+        run: brew style --formula drod3763/tap/rar && brew audit --strict drod3763/tap/rar
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-rar-${{ inputs.version }}
+          title: "rar ${{ inputs.version }}"
+          commit-message: "rar ${{ inputs.version }}"
+          body: |
+            Automated update for `Formula/rar.rb`.
+
+            - updates version
+            - refreshes ARM and Intel URLs
+            - refreshes ARM and Intel SHA256 values
