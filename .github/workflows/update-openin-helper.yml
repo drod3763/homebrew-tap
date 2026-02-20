@@ -1,0 +1,53 @@
+name: update-openin-helper
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version override (example: 4.3.5). Leave empty for latest stable appcast release."
+        required: false
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update cask
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            scripts/update-openin-helper.sh "${{ inputs.version }}"
+          else
+            scripts/update-openin-helper.sh
+          fi
+
+      - name: Validate cask
+        run: brew style --cask drod3763/tap/openin-helper && brew audit --cask --strict drod3763/tap/openin-helper
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Casks/openin-helper.rb"); puts content[/version "([^"]+)"/, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-openin-helper-${{ steps.read_version.outputs.version }}
+          title: "openin-helper ${{ steps.read_version.outputs.version }}"
+          commit-message: "openin-helper ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Casks/openin-helper.rb`.
+
+            - updates version
+            - refreshes SHA256 value

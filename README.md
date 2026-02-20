@@ -25,3 +25,9 @@ brew "<formula>"
 
 - Local update: `scripts/update-rar.sh 7.20`
 - GitHub Actions update: run the `update-rar` workflow with a version input (for example `7.20`)
+
+## Updating `openin-helper` cask
+
+- Local update to latest stable appcast entry: `scripts/update-openin-helper.sh`
+- Local update to a specific version: `scripts/update-openin-helper.sh 4.3.5`
+- GitHub Actions update: run `update-openin-helper` (optionally provide a version input)
