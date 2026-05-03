@@ -1,0 +1,55 @@
+name: update-truenas-mcp
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version tag (example: v0.0.5). Leave empty for latest release."
+        required: false
+        type: string
+  schedule:
+    - cron: "0 8 * * 1"  # every Monday at 08:00 UTC
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update formula
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            scripts/update-truenas-mcp.sh "${{ inputs.version }}"
+          else
+            scripts/update-truenas-mcp.sh
+          fi
+
+      - name: Validate formula
+        run: brew style --formula drod3763/tap/truenas-mcp && brew audit --strict drod3763/tap/truenas-mcp
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Formula/truenas-mcp.rb"); puts content[%r{/tags/(v[^"]+)\.tar}, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-truenas-mcp-${{ steps.read_version.outputs.version }}
+          title: "truenas-mcp ${{ steps.read_version.outputs.version }}"
+          commit-message: "truenas-mcp ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Formula/truenas-mcp.rb`.
+
+            - updates source tarball URL
+            - refreshes SHA256 value
