@@ -68,6 +68,31 @@ brew audit --cask --strict drod3763/tap/openin-helper
 
 CI (`tests.yml`) runs `brew test-bot` across Ubuntu, macOS Intel, and macOS ARM on every push/PR.
 
+## Commit conventions
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>[optional scope]: <description>
+```
+
+Types used in this repo:
+
+| Type | When |
+|------|------|
+| `feat` | New formula, cask, or updater script |
+| `fix` | Bug fix in formula, cask, or script |
+| `chore` | Repo setup, CI config, tooling changes |
+| `build` | Version/SHA bumps from updater scripts |
+
+Examples:
+```
+feat: add truenas-mcp formula with automated updater
+fix: resolve shfmt and shellcheck issues in update-truenas-mcp.sh
+build(rar): bump to 7.21
+chore: init drod3763/tap homebrew tap
+```
+
 ## Key conventions
 
 - Update scripts patch Ruby source files via inline `ruby -e` — no gems needed, just `curl` + `shasum`/`sha256sum`.
