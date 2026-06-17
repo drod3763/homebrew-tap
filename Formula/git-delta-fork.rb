@@ -3,7 +3,7 @@ class GitDeltaFork < Formula
   homepage "https://github.com/drod3763/delta"
   license "MIT"
   # Head-only: tracks the fork's feature branch. Install with `brew install --HEAD`.
-  head "https://github.com/drod3763/delta.git", branch: "light-dark-themes"
+  head "https://github.com/drod3763/delta.git", branch: "os-dark-light-detection"
 
   # Installs the `delta` binary, which conflicts with the homebrew-core git-delta formula.
   conflicts_with "git-delta", because: "both install a `delta` binary"
