@@ -5,10 +5,10 @@ class GitDeltaFork < Formula
   # Head-only: tracks the fork's feature branch. Install with `brew install --HEAD`.
   head "https://github.com/drod3763/delta.git", branch: "os-dark-light-detection"
 
+  depends_on "rust" => :build
+
   # Installs the `delta` binary, which conflicts with the homebrew-core git-delta formula.
   conflicts_with "git-delta", because: "both install a `delta` binary"
-
-  depends_on "rust" => :build
 
   def install
     system "cargo", "install", *std_cargo_args
