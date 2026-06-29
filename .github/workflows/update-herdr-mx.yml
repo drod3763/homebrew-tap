@@ -1,0 +1,148 @@
+name: update-herdr-mx
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional release tag (example: v0.7.1-mx.1). Leave empty for latest release."
+        required: false
+        type: string
+  schedule:
+    - cron: "0 9 * * 1"  # every Monday at 09:00 UTC
+
+jobs:
+  # Resolve and validate the target tag ONCE, generate the formula ONCE, and publish
+  # it as the single artifact every downstream job consumes. This freezes the release
+  # (no per-job "latest" re-resolution) and pins the four SHA256s a single time, so the
+  # exact same bytes are validated on every platform and committed to the PR.
+  resolve:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The updater invokes Ruby (JSON parse + inline formula rewrite); set up Homebrew
+      # for its portable Ruby rather than relying on whatever the runner image ships.
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve and validate target tag
+        id: resolve
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if [ -n "$VERSION" ]; then
+            tag="$VERSION"
+          else
+            tag="$(curl -fsSL "https://api.github.com/repos/drod3763/herdr-mx/releases/latest" |
+              ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("tag_name")')"
+          fi
+          # Reject anything that is not a herdr-mx release tag before it reaches a shell
+          # or the GITHUB_OUTPUT file. A whole-string Bash regex match (not grep, which
+          # matches per line) rejects embedded newlines, closing the GITHUB_OUTPUT
+          # injection path from a crafted dispatch input or hostile release name.
+          if [[ ! "$tag" =~ ^v[0-9]+(\.[0-9]+)+-mx\.[0-9]+$ ]]; then
+            echo "Refusing invalid tag: $tag" >&2
+            exit 1
+          fi
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Install minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+
+      - name: Generate formula
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: scripts/update-herdr-mx.sh "$TAG"
+
+      - name: Upload generated formula
+        uses: actions/upload-artifact@v4
+        with:
+          name: herdr-mx-formula
+          path: Formula/herdr-mx.rb
+          if-no-files-found: error
+
+  # Install + test the single generated formula on every shipped platform. PRs opened by
+  # the default GITHUB_TOKEN do not trigger the pull_request test-bot workflow, so this
+  # matrix is the actual gate. Each leg downloads the exact same artifact, so `brew
+  # install` verifies each platform's pinned SHA against the live asset — a swapped or
+  # broken asset fails its leg and blocks the PR. Covers all four shipped assets:
+  # Linux x86_64/aarch64 and macOS x86_64/aarch64.
+  validate:
+    needs: resolve
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-26]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Use generated formula
+        uses: actions/download-artifact@v4
+        with:
+          name: herdr-mx-formula
+          path: Formula
+
+      - name: Validate formula
+        run: brew style --formula drod3763/tap/herdr-mx && brew audit --strict drod3763/tap/herdr-mx
+
+      - name: Install and test formula
+        run: |
+          brew install --formula drod3763/tap/herdr-mx
+          brew test drod3763/tap/herdr-mx
+
+  open-pr:
+    needs: [resolve, validate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Commit the exact formula the matrix validated — no re-resolution or re-running
+      # the updater here, so the published PR can only contain validated artifacts.
+      - name: Download generated formula
+        uses: actions/download-artifact@v4
+        with:
+          name: herdr-mx-formula
+          path: Formula
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          # Extract with plain shell tools — this job sets up no Ruby/Homebrew.
+          VERSION="$(sed -n 's/^[[:space:]]*version "\([^"]*\)".*/\1/p' Formula/herdr-mx.rb | head -1)"
+          if [ -z "$VERSION" ]; then
+            echo "Could not read version from Formula/herdr-mx.rb" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-herdr-mx-${{ steps.read_version.outputs.version }}
+          title: "herdr-mx ${{ steps.read_version.outputs.version }}"
+          commit-message: "herdr-mx ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Formula/herdr-mx.rb`.
+
+            - updates release asset URLs
+            - refreshes the four per-platform SHA256 values
+            - validated by install + test on Linux x86_64/aarch64 and macOS x86_64/aarch64
