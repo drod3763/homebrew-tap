@@ -27,7 +27,7 @@ else
   tag="$(detect_latest)"
 fi
 
-if [[ ! "${tag}" =~ ^v[0-9]+(\.[0-9]+)*-mx\.[0-9]+$ ]]
+if [[ ! "${tag}" =~ ^v[0-9]+(\.[0-9]+)+-mx\.[0-9]+$ ]]
 then
   printf 'Tag must look like v0.7.1-mx.1\n' >&2
   exit 1
