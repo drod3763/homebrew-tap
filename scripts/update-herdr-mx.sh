@@ -59,7 +59,8 @@ else
   exit 1
 fi
 
-workdir="$(mktemp -d)"
+# Explicit template — portable across GNU and BSD (macOS) mktemp.
+workdir="$(mktemp -d "${TMPDIR:-/tmp}/herdr-mx.XXXXXX")"
 trap 'rm -rf "${workdir}"' EXIT
 
 # Download an asset and its detached signature, verify the signature against the pinned
