@@ -36,6 +36,8 @@ class HerdrMx < Formula
   def install
     # Release asset is a single bare binary whose name varies by platform.
     bin.install Dir["herdr-*"].first => "herdr"
+    # An HTTP download of a naked binary does not carry the executable bit; set it explicitly.
+    chmod 0555, bin/"herdr"
   end
 
   test do
