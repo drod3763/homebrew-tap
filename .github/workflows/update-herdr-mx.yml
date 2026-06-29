@@ -23,6 +23,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The updater invokes Ruby (JSON parse + inline formula rewrite); set up Homebrew
+      # for its portable Ruby rather than relying on whatever the runner image ships.
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Resolve and validate target tag
         id: resolve
         env:
