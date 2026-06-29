@@ -123,8 +123,9 @@ linux_block = "  on_linux do\n" \
               "    end\n" \
               "  end\n"
 
-updated.sub!(/  on_macos do\n.*?\n  end\n/m, macos_block)
-updated.sub!(/  on_linux do\n.*?\n  end\n/m, linux_block)
+raise "Failed to update #{path}: version line not found" unless content =~ /version "[^"]+"/
+raise "Failed to update #{path}: on_macos block not found" unless updated.sub!(/  on_macos do\n.*?\n  end\n/m, macos_block)
+raise "Failed to update #{path}: on_linux block not found" unless updated.sub!(/  on_linux do\n.*?\n  end\n/m, linux_block)
 
 [macos_arm_sha, macos_intel_sha, linux_arm_sha, linux_intel_sha].each do |sha|
   raise "Failed to update #{path}: missing #{sha}" unless updated.include?(sha)
