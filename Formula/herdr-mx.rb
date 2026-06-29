@@ -41,6 +41,8 @@ class HerdrMx < Formula
   end
 
   test do
-    assert_match "0.7.1", shell_output("#{bin}/herdr --version")
+    # `herdr --version` prints the full fork version (e.g. "herdr 0.7.1-mx.1"),
+    # so assert against the formula version to stay correct across updates.
+    assert_match version.to_s, shell_output("#{bin}/herdr --version")
   end
 end
