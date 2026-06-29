@@ -60,8 +60,7 @@ else
 fi
 
 workdir="$(mktemp -d)"
-# shellcheck disable=SC2064
-trap "rm -rf '${workdir}'" EXIT
+trap 'rm -rf "${workdir}"' EXIT
 
 # Download an asset and its detached signature, verify the signature against the pinned
 # key (fail closed on a missing or invalid signature), then print the SHA256.
