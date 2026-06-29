@@ -11,15 +11,19 @@ on:
     - cron: "0 9 * * 1"  # every Monday at 09:00 UTC
 
 jobs:
-  # Freeze the target release ONCE so every downstream job acts on the same immutable
-  # tag. Without this, each scheduled job would re-resolve "latest" independently and a
-  # release published mid-run could be opened as a PR without having been validated.
+  # Resolve and validate the target tag ONCE, generate the formula ONCE, and publish
+  # it as the single artifact every downstream job consumes. This freezes the release
+  # (no per-job "latest" re-resolution) and pins the four SHA256s a single time, so the
+  # exact same bytes are validated on every platform and committed to the PR.
   resolve:
     runs-on: ubuntu-24.04
-    outputs:
-      tag: ${{ steps.resolve.outputs.tag }}
+    permissions:
+      contents: read
     steps:
-      - name: Resolve target tag
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve and validate target tag
         id: resolve
         env:
           VERSION: ${{ inputs.version }}
@@ -30,16 +34,37 @@ jobs:
             tag="$(curl -fsSL "https://api.github.com/repos/drod3763/herdr-mx/releases/latest" |
               ruby -rjson -e 'puts JSON.parse($stdin.read).fetch("tag_name")')"
           fi
-          echo "Resolved target tag: $tag"
+          # Reject anything that is not a herdr-mx release tag before it reaches a shell
+          # or the GITHUB_OUTPUT file — defends against a crafted dispatch input or a
+          # hostile release name.
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+(\.[0-9]+)*-mx\.[0-9]+$'; then
+            echo "Refusing invalid tag: $tag" >&2
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-  # Run the (deterministic) updater pinned to the frozen tag on every shipped platform
-  # and exercise the real install + `herdr --version` path. PRs opened by the default
-  # GITHUB_TOKEN do not trigger the pull_request test-bot workflow, so this matrix is
-  # the actual gate — the PR is only opened if every platform's asset installs and runs.
-  # Covers all four shipped assets: Linux x86_64/aarch64 and macOS x86_64/aarch64.
+      - name: Generate formula
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: scripts/update-herdr-mx.sh "$TAG"
+
+      - name: Upload generated formula
+        uses: actions/upload-artifact@v4
+        with:
+          name: herdr-mx-formula
+          path: Formula/herdr-mx.rb
+          if-no-files-found: error
+
+  # Install + test the single generated formula on every shipped platform. PRs opened by
+  # the default GITHUB_TOKEN do not trigger the pull_request test-bot workflow, so this
+  # matrix is the actual gate. Each leg downloads the exact same artifact, so `brew
+  # install` verifies each platform's pinned SHA against the live asset — a swapped or
+  # broken asset fails its leg and blocks the PR. Covers all four shipped assets:
+  # Linux x86_64/aarch64 and macOS x86_64/aarch64.
   validate:
     needs: resolve
+    permissions:
+      contents: read
     strategy:
       fail-fast: true
       matrix:
@@ -54,8 +79,11 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update formula
-        run: scripts/update-herdr-mx.sh "${{ needs.resolve.outputs.tag }}"
+      - name: Use generated formula
+        uses: actions/download-artifact@v4
+        with:
+          name: herdr-mx-formula
+          path: Formula
 
       - name: Validate formula
         run: brew style --formula drod3763/tap/herdr-mx && brew audit --strict drod3763/tap/herdr-mx
@@ -64,16 +92,6 @@ jobs:
         run: |
           brew install --formula drod3763/tap/herdr-mx
           brew test drod3763/tap/herdr-mx
-
-      # Upload the exact validated formula from one leg so open-pr commits these precise
-      # bytes rather than re-running detection (which could pick up swapped assets).
-      - name: Upload validated formula
-        if: matrix.os == 'ubuntu-24.04'
-        uses: actions/upload-artifact@v4
-        with:
-          name: herdr-mx-formula
-          path: Formula/herdr-mx.rb
-          if-no-files-found: error
 
   open-pr:
     needs: [resolve, validate]
@@ -85,9 +103,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Commit the exact formula the matrix validated — do not re-resolve or re-run the
-      # updater here, so the published PR can only ever contain validated artifacts.
-      - name: Download validated formula
+      # Commit the exact formula the matrix validated — no re-resolution or re-running
+      # the updater here, so the published PR can only contain validated artifacts.
+      - name: Download generated formula
         uses: actions/download-artifact@v4
         with:
           name: herdr-mx-formula
