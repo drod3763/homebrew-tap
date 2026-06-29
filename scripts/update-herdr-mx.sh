@@ -14,9 +14,8 @@ then
 fi
 
 detect_latest() {
-  # shellcheck disable=SC2016
   curl -fsSL "https://api.github.com/repos/drod3763/herdr-mx/releases/latest" |
-    ruby -rjson -e 'puts JSON.parse($stdin.read).fetch("tag_name")'
+    ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("tag_name")'
 }
 
 if [[ $# -eq 1 ]]

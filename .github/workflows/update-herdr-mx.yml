@@ -40,7 +40,7 @@ jobs:
             tag="$VERSION"
           else
             tag="$(curl -fsSL "https://api.github.com/repos/drod3763/herdr-mx/releases/latest" |
-              ruby -rjson -e 'puts JSON.parse($stdin.read).fetch("tag_name")')"
+              ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("tag_name")')"
           fi
           # Reject anything that is not a herdr-mx release tag before it reaches a shell
           # or the GITHUB_OUTPUT file. A whole-string Bash regex match (not grep, which
