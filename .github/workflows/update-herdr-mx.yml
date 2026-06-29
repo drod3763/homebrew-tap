@@ -38,6 +38,14 @@ jobs:
       - name: Validate formula
         run: brew style --formula drod3763/tap/herdr-mx && brew audit --strict drod3763/tap/herdr-mx
 
+      # PRs opened by the default GITHUB_TOKEN do not trigger the pull_request
+      # test-bot workflow, so exercise the real staging path and `herdr --version`
+      # check here before the PR is created — not just metadata checks.
+      - name: Install and test formula
+        run: |
+          brew install --formula drod3763/tap/herdr-mx
+          brew test drod3763/tap/herdr-mx
+
       - name: Read updated version
         id: read_version
         run: |
