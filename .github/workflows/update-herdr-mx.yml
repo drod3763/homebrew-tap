@@ -11,7 +11,46 @@ on:
     - cron: "0 9 * * 1"  # every Monday at 09:00 UTC
 
 jobs:
-  update:
+  # Run the (deterministic) updater on every shipped platform and exercise the real
+  # install + `herdr --version` path. PRs opened by the default GITHUB_TOKEN do not
+  # trigger the pull_request test-bot workflow, so this matrix is the actual gate:
+  # the PR is only opened if every platform's asset installs and runs. Covers all
+  # four shipped assets — Linux x86_64/aarch64 and macOS x86_64/aarch64.
+  validate:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-13, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update formula
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            scripts/update-herdr-mx.sh "$VERSION"
+          else
+            scripts/update-herdr-mx.sh
+          fi
+
+      - name: Validate formula
+        run: brew style --formula drod3763/tap/herdr-mx && brew audit --strict drod3763/tap/herdr-mx
+
+      - name: Install and test formula
+        run: |
+          brew install --formula drod3763/tap/herdr-mx
+          brew test drod3763/tap/herdr-mx
+
+  open-pr:
+    needs: validate
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -35,17 +74,6 @@ jobs:
             scripts/update-herdr-mx.sh
           fi
 
-      - name: Validate formula
-        run: brew style --formula drod3763/tap/herdr-mx && brew audit --strict drod3763/tap/herdr-mx
-
-      # PRs opened by the default GITHUB_TOKEN do not trigger the pull_request
-      # test-bot workflow, so exercise the real staging path and `herdr --version`
-      # check here before the PR is created — not just metadata checks.
-      - name: Install and test formula
-        run: |
-          brew install --formula drod3763/tap/herdr-mx
-          brew test drod3763/tap/herdr-mx
-
       - name: Read updated version
         id: read_version
         run: |
@@ -63,3 +91,4 @@ jobs:
 
             - updates release asset URLs
             - refreshes the four per-platform SHA256 values
+            - validated by install + test on Linux x86_64/aarch64 and macOS x86_64/aarch64
