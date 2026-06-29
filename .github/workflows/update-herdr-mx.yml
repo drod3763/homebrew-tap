@@ -124,7 +124,12 @@ jobs:
       - name: Read updated version
         id: read_version
         run: |
-          VERSION="$(ruby -e 'content = File.read("Formula/herdr-mx.rb"); puts content[/version "([^"]+)"/, 1]')"
+          # Extract with plain shell tools — this job sets up no Ruby/Homebrew.
+          VERSION="$(sed -n 's/^[[:space:]]*version "\([^"]*\)".*/\1/p' Formula/herdr-mx.rb | head -1)"
+          if [ -z "$VERSION" ]; then
+            echo "Could not read version from Formula/herdr-mx.rb" >&2
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create pull request
