@@ -34,6 +34,7 @@ jobs:
         id: resolve
         env:
           VERSION: ${{ inputs.version }}
+        shell: bash
         run: |
           if [ -n "$VERSION" ]; then
             tag="$VERSION"
@@ -42,13 +43,14 @@ jobs:
               ruby -rjson -e 'puts JSON.parse($stdin.read).fetch("tag_name")')"
           fi
           # Reject anything that is not a herdr-mx release tag before it reaches a shell
-          # or the GITHUB_OUTPUT file — defends against a crafted dispatch input or a
-          # hostile release name.
-          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+(\.[0-9]+)+-mx\.[0-9]+$'; then
+          # or the GITHUB_OUTPUT file. A whole-string Bash regex match (not grep, which
+          # matches per line) rejects embedded newlines, closing the GITHUB_OUTPUT
+          # injection path from a crafted dispatch input or hostile release name.
+          if [[ ! "$tag" =~ ^v[0-9]+(\.[0-9]+)+-mx\.[0-9]+$ ]]; then
             echo "Refusing invalid tag: $tag" >&2
             exit 1
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
 
       - name: Install minisign
         run: sudo apt-get update && sudo apt-get install -y minisign
