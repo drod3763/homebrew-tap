@@ -26,9 +26,11 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update formula
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            scripts/update-herdr-mx.sh "${{ inputs.version }}"
+          if [ -n "$VERSION" ]; then
+            scripts/update-herdr-mx.sh "$VERSION"
           else
             scripts/update-herdr-mx.sh
           fi
