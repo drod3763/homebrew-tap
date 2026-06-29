@@ -4,10 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A Homebrew third-party tap (`drod3763/tap`) hosting two packages:
+A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 
 - **`Formula/rar.rb`** — Formula for the RAR CLI (downloads prebuilt binaries from rarlab.com; dual-arch: ARM + Intel)
 - **`Formula/truenas-mcp.rb`** — Formula for TrueNAS MCP server (builds from source via `go build`; requires Go)
+- **`Formula/herdr-mx.rb`** — Formula for the herdr-mx fork (downloads prebuilt, minisign-signed binaries from GitHub Releases; dual-OS macOS + Linux, dual-arch ARM + Intel; self-update disabled by design, so updates ship through this tap)
+- **`Formula/git-delta-fork.rb`** — Formula for the drod3763 delta fork (HEAD-only; builds from source via `cargo`)
 - **`Casks/openin-helper.rb`** — Cask for OpenIn Helper macOS app (downloaded from loshadki.app appcast)
 
 ## Updating packages
@@ -52,17 +54,34 @@ scripts/update-truenas-mcp.sh v0.0.5
 # Workflow: update-truenas-mcp — version input optional
 ```
 
+### herdr-mx (auto-detects latest GitHub release)
+
+```bash
+# Local — latest GitHub release
+scripts/update-herdr-mx.sh
+
+# Local — specific release tag
+scripts/update-herdr-mx.sh v0.7.1-mx.1
+
+# GitHub Actions (workflow_dispatch or weekly Monday cron)
+# Workflow: update-herdr-mx — version input optional
+```
+
+The script downloads all four prebuilt binaries (macOS/Linux × ARM/Intel), computes their SHA256s, and regenerates the `on_macos`/`on_linux` blocks in `Formula/herdr-mx.rb`. Release tags carry an `-mx.N` suffix (e.g. `v0.7.1-mx.1`).
+
 ## Validating changes
 
 ```bash
 # Lint/style check
 brew style --formula drod3763/tap/rar
 brew style --formula drod3763/tap/truenas-mcp
+brew style --formula drod3763/tap/herdr-mx
 brew style --cask drod3763/tap/openin-helper
 
 # Audit
 brew audit --strict drod3763/tap/rar
 brew audit --strict drod3763/tap/truenas-mcp
+brew audit --strict drod3763/tap/herdr-mx
 brew audit --cask --strict drod3763/tap/openin-helper
 ```
 

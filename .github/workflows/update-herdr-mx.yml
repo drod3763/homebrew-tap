@@ -1,0 +1,55 @@
+name: update-herdr-mx
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional release tag (example: v0.7.1-mx.1). Leave empty for latest release."
+        required: false
+        type: string
+  schedule:
+    - cron: "0 9 * * 1"  # every Monday at 09:00 UTC
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update formula
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            scripts/update-herdr-mx.sh "${{ inputs.version }}"
+          else
+            scripts/update-herdr-mx.sh
+          fi
+
+      - name: Validate formula
+        run: brew style --formula drod3763/tap/herdr-mx && brew audit --strict drod3763/tap/herdr-mx
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Formula/herdr-mx.rb"); puts content[/version "([^"]+)"/, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-herdr-mx-${{ steps.read_version.outputs.version }}
+          title: "herdr-mx ${{ steps.read_version.outputs.version }}"
+          commit-message: "herdr-mx ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Formula/herdr-mx.rb`.
+
+            - updates release asset URLs
+            - refreshes the four per-platform SHA256 values
