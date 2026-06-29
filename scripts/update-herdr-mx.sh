@@ -36,32 +36,56 @@ fi
 version="${tag#v}"
 base="https://github.com/drod3763/herdr-mx/releases/download/${tag}"
 
-sha_for_url() {
-  local url="$1"
-  if command -v shasum >/dev/null 2>&1
-  then
-    curl -fsSL "${url}" | shasum -a 256 | cut -d' ' -f1
-    return
-  fi
+# Pinned minisign (ed25519) public key herdr-mx signs its release artifacts with —
+# the base64 key line from ACCEPTED_PUBKEYS in the fork's src/signing.rs. Verifying the
+# detached .minisig before trusting any bytes means a compromised or swapped release
+# asset cannot be pinned into the formula with a "valid" Homebrew checksum.
+readonly MINISIGN_PUBKEY="RWQupm2xx/vDQ2YjRHgy/84xAkdgzIgwIN/4CyOy5n1rQRQnHW34r3D2"
 
-  if command -v sha256sum >/dev/null 2>&1
-  then
-    curl -fsSL "${url}" | sha256sum | cut -d' ' -f1
-    return
-  fi
+if ! command -v minisign >/dev/null 2>&1
+then
+  printf 'Need minisign in PATH to verify release signatures (brew install minisign)\n' >&2
+  exit 1
+fi
 
+if command -v shasum >/dev/null 2>&1
+then
+  sha256_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
+elif command -v sha256sum >/dev/null 2>&1
+then
+  sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
+else
   printf 'Need shasum or sha256sum in PATH\n' >&2
   exit 1
+fi
+
+workdir="$(mktemp -d)"
+# shellcheck disable=SC2064
+trap "rm -rf '${workdir}'" EXIT
+
+# Download an asset and its detached signature, verify the signature against the pinned
+# key (fail closed on a missing or invalid signature), then print the SHA256.
+sha_for_asset() {
+  local name="$1"
+  local file="${workdir}/${name}"
+  curl -fsSL -o "${file}" "${base}/${name}"
+  curl -fsSL -o "${file}.minisig" "${base}/${name}.minisig"
+  if ! minisign -V -P "${MINISIGN_PUBKEY}" -m "${file}" -x "${file}.minisig" >/dev/null 2>&1
+  then
+    printf 'minisign verification FAILED for %s — refusing to pin unverified asset\n' "${name}" >&2
+    exit 1
+  fi
+  sha256_of "${file}"
 }
 
-printf 'Calculating macOS arm64 checksum...\n'
-macos_arm_sha="$(sha_for_url "${base}/herdr-macos-aarch64")"
-printf 'Calculating macOS x86_64 checksum...\n'
-macos_intel_sha="$(sha_for_url "${base}/herdr-macos-x86_64")"
-printf 'Calculating Linux arm64 checksum...\n'
-linux_arm_sha="$(sha_for_url "${base}/herdr-linux-aarch64")"
-printf 'Calculating Linux x86_64 checksum...\n'
-linux_intel_sha="$(sha_for_url "${base}/herdr-linux-x86_64")"
+printf 'Verifying + hashing macOS arm64...\n'
+macos_arm_sha="$(sha_for_asset "herdr-macos-aarch64")"
+printf 'Verifying + hashing macOS x86_64...\n'
+macos_intel_sha="$(sha_for_asset "herdr-macos-x86_64")"
+printf 'Verifying + hashing Linux arm64...\n'
+linux_arm_sha="$(sha_for_asset "herdr-linux-aarch64")"
+printf 'Verifying + hashing Linux x86_64...\n'
+linux_intel_sha="$(sha_for_asset "herdr-linux-x86_64")"
 
 FORMULA_PATH="${formula_path}" VERSION="${version}" TAG="${tag}" \
   MACOS_ARM_SHA="${macos_arm_sha}" MACOS_INTEL_SHA="${macos_intel_sha}" \

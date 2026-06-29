@@ -67,7 +67,7 @@ scripts/update-herdr-mx.sh v0.7.1-mx.1
 # Workflow: update-herdr-mx — version input optional
 ```
 
-The script downloads all four prebuilt binaries (macOS/Linux × ARM/Intel), computes their SHA256s, and regenerates the `on_macos`/`on_linux` blocks in `Formula/herdr-mx.rb`. Release tags carry an `-mx.N` suffix (e.g. `v0.7.1-mx.1`).
+The script downloads all four prebuilt binaries (macOS/Linux × ARM/Intel), **verifies each one's detached minisign signature against the fork's pinned public key before trusting it** (fails closed on a missing/invalid signature), computes their SHA256s, and regenerates the `on_macos`/`on_linux` blocks in `Formula/herdr-mx.rb`. Requires `minisign` in `PATH` (`brew install minisign`). Release tags carry an `-mx.N` suffix (e.g. `v0.7.1-mx.1`).
 
 ## Validating changes
 
