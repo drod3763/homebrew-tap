@@ -8,7 +8,7 @@ on:
         required: false
         type: string
   schedule:
-    - cron: "0 9 * * 1"  # every Monday at 09:00 UTC
+    - cron: "0 9 * * *"  # daily at 09:00 UTC
 
 jobs:
   # Resolve and validate the target tag ONCE, generate the formula ONCE, and publish
