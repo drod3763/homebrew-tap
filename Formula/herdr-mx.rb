@@ -3,6 +3,7 @@ class HerdrMx < Formula
   homepage "https://github.com/drod3763/herdr-mx"
   version "0.7.1-mx.2"
   license "AGPL-3.0-or-later"
+  revision 1
 
   livecheck do
     url :stable
@@ -48,6 +49,13 @@ class HerdrMx < Formula
     bin.install binaries.first => "herdr"
     # An HTTP download of a naked binary does not carry the executable bit; set it explicitly.
     chmod 0555, bin/"herdr"
+  end
+
+  service do
+    run [opt_bin/"herdr", "server"]
+    keep_alive true
+    log_path var/"log/herdr.log"
+    error_log_path var/"log/herdr.log"
   end
 
   test do
