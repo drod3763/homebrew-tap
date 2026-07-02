@@ -10,6 +10,14 @@ class HerdrMx < Formula
     strategy :github_latest
   end
 
+  bottle do
+    root_url "https://github.com/drod3763/homebrew-tap/releases/download/herdr-mx-0.7.1-mx.2"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "c3bceb3c860254d4d20772ec434c43f6e03d9cc97bcb9f1e8df8cea69069ecfb"
+    sha256 cellar: :any_skip_relocation, sequoia:      "84deba58c7396d595ce33b2184707e0f26096ac3f7845995c4aa11f38002ea52"
+    sha256 cellar: :any_skip_relocation, arm64_linux:  "d1a40972654825866bee85f58dc55d6b7bbd8bf26c9d0066102d1c7cd17f7192"
+    sha256 cellar: :any_skip_relocation, x86_64_linux: "7c9bc1f66ee6bbf3915a01f63b5c2728fdc6a2692ebd4e79f53f773f529a93d1"
+  end
+
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.2/herdr-macos-aarch64"
