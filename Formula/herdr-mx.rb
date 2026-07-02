@@ -14,8 +14,8 @@ class HerdrMx < Formula
   # No bottle block: `revision 1` shifts the expected bottle filename to a
   # `_1`-suffixed name that was never built (the prior release only carries
   # revision-0 bottles), so a committed bottle block 404s. Without it, installs
-  # fall back to the signed prebuilt binaries below. `brew pr-pull` will
-  # re-add a matching bottle block on the next release.
+  # use the checksum-verified (sha256) prebuilt binaries below. `brew pr-pull`
+  # will re-add a matching bottle block on the next release.
 
   on_macos do
     if Hardware::CPU.arm?
