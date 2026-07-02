@@ -101,6 +101,10 @@ base = "https://github.com/drod3763/herdr-mx/releases/download/#{tag}"
 
 content = File.read(path)
 updated = content.sub(/version "[^"]+"/, %(version "#{version}"))
+# Drop any manual `revision N` line on an upstream bump. In Homebrew `revision` is a
+# per-version counter (version string becomes "#{version}_#{revision}"), so a stale
+# revision carried into a new version would yield e.g. "0.8.0-mx.1_1". A bump resets it.
+updated.sub!(/^\s*revision\s+\d+\s*\n/, "")
 
 macos_block = "  on_macos do\n" \
               "    if Hardware::CPU.arm?\n" \
