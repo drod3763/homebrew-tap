@@ -1,7 +1,7 @@
 class HerdrMx < Formula
   desc "Terminal workspace manager for AI coding agents (drod3763 fork)"
   homepage "https://github.com/drod3763/herdr-mx"
-  version "0.7.1-mx.1"
+  version "0.7.1-mx.2"
   license "AGPL-3.0-or-later"
 
   livecheck do
@@ -12,21 +12,21 @@ class HerdrMx < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.1/herdr-macos-aarch64"
-      sha256 "3081e1814db3697193fcc9621f1fc7cd9418b5ffeecb62c4fd257288b63ccfd2"
+      url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.2/herdr-macos-aarch64"
+      sha256 "b0d9637044fd7518298e66a75ead0efe87df6fa5b888d362875d6a6173a9c0de"
     else
-      url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.1/herdr-macos-x86_64"
-      sha256 "bf36790cd9fc7a7b56b055109054afe414833c6b1cd8f2e10da042378e70fc93"
+      url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.2/herdr-macos-x86_64"
+      sha256 "5262f43155e286ee3f5879cb61a4c208139cbc1f96731de58411005ce843a33d"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.1/herdr-linux-aarch64"
-      sha256 "a7eb2e21089bd58a1d8cd8b6d66a583d137b8899d2335b66b51a2febe45074fd"
+      url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.2/herdr-linux-aarch64"
+      sha256 "997c07d7d21671253e686c6e018e8763f327c5476d56bdc70801e49ddec04ef9"
     else
-      url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.1/herdr-linux-x86_64"
-      sha256 "734886a0e2d110417ed4c4fd408dc0cc3dfc8fd17c0fd02a6fd03350d0af4992"
+      url "https://github.com/drod3763/herdr-mx/releases/download/v0.7.1-mx.2/herdr-linux-x86_64"
+      sha256 "e92775dedb4afeddb47d2bd9ac2241a2691009430c1c96d21b688194dc8f7bb7"
     end
   end
 
