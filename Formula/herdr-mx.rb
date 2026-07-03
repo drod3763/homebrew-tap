@@ -3,8 +3,6 @@ class HerdrMx < Formula
   homepage "https://github.com/drod3763/herdr-mx"
   version "0.7.1-mx.2"
   license "AGPL-3.0-or-later"
-  revision 1
-
   livecheck do
     url :stable
     regex(/^v?(\d+(?:\.\d+)+-mx\.\d+)$/i)
