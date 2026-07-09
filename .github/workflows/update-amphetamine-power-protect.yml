@@ -26,11 +26,16 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update cask
+        # Pass inputs through env, never interpolate ${{ }} into the shell body: GitHub
+        # evaluates expressions before the shell parses the script, so a crafted commit
+        # input could otherwise break quoting and run arbitrary commands. The script's own
+        # 40-hex SHA validation then rejects anything malformed.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ inputs.commit }}
         run: |
-          if [ -n "${{ inputs.commit }}" ]; then
-            scripts/update-amphetamine-power-protect.sh "${{ inputs.commit }}"
+          if [ -n "$COMMIT" ]; then
+            scripts/update-amphetamine-power-protect.sh "$COMMIT"
           else
             scripts/update-amphetamine-power-protect.sh
           fi
