@@ -1,0 +1,58 @@
+name: update-amphetamine-power-protect
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Optional commit SHA to pin (40 hex chars). Leave empty for the latest commit touching the DMG."
+        required: false
+        type: string
+  schedule:
+    - cron: "0 9 * * 1"  # weekly Monday at 09:00 UTC
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update cask
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.commit }}" ]; then
+            scripts/update-amphetamine-power-protect.sh "${{ inputs.commit }}"
+          else
+            scripts/update-amphetamine-power-protect.sh
+          fi
+
+      - name: Validate cask
+        run: brew style --cask drod3763/tap/amphetamine-power-protect && brew audit --cask --strict drod3763/tap/amphetamine-power-protect
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Casks/amphetamine-power-protect.rb"); puts content[/version "([^"]+)"/, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-amphetamine-power-protect-${{ steps.read_version.outputs.version }}
+          title: "amphetamine-power-protect ${{ steps.read_version.outputs.version }}"
+          commit-message: "amphetamine-power-protect ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Casks/amphetamine-power-protect.rb`.
+
+            - repins the DMG URL to the latest commit touching the installer
+            - updates the date-based version
+            - refreshes SHA256 value
