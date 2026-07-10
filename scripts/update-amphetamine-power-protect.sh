@@ -56,14 +56,16 @@ then
   exit 1
 fi
 
-if [[ ! "${date}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]
+if [[ ! "${date}" =~ ^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2}) ]]
 then
   printf 'Could not read commit date (got: %s)\n' "${date}" >&2
   exit 1
 fi
 
-# Commit date YYYY-MM-DD -> cask version YYYY.MM.DD (bumps only when the DMG changes).
-version="$(printf '%s' "${date}" | cut -c1-10 | tr '-' '.')"
+# Commit timestamp -> cask version YYYY.MM.DD.HHMMSS. Using the full time (not just the
+# date) keeps the version monotonic even if upstream replaces the DMG more than once on the
+# same UTC day, so brew upgrade always orders a newer installer higher.
+version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.${BASH_REMATCH[4]}${BASH_REMATCH[5]}${BASH_REMATCH[6]}"
 url="https://raw.githubusercontent.com/${owner}/${repo}/${commit}/${dmg_path_encoded}"
 
 if command -v shasum >/dev/null 2>&1

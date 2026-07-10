@@ -11,7 +11,7 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Formula/herdr-mx.rb`** — Formula for the herdr-mx fork (downloads prebuilt, minisign-signed binaries from GitHub Releases; dual-OS macOS + Linux, dual-arch ARM + Intel; self-update disabled by design, so updates ship through this tap)
 - **`Formula/git-delta-fork.rb`** — Formula for the drod3763 delta fork (HEAD-only; builds from source via `cargo`)
 - **`Casks/openin-helper.rb`** — Cask for OpenIn Helper macOS app (downloaded from loshadki.app appcast)
-- **`Casks/amphetamine-power-protect.rb`** — Cask for Power Protect for Amphetamine (runs a `.pkg` from a DMG in the x74353 GitHub repo that fixes Closed-Display Mode power transitions; upstream has no releases, so the DMG URL is pinned to a commit SHA and the version is derived from that commit's date)
+- **`Casks/amphetamine-power-protect.rb`** — Cask for Power Protect for Amphetamine (runs a `.pkg` from a DMG in the x74353 GitHub repo that fixes Closed-Display Mode power transitions; upstream has no releases, so the DMG URL is pinned to a commit SHA and the version is derived from that commit's timestamp)
 
 ## Updating packages
 
@@ -83,7 +83,7 @@ scripts/update-amphetamine-power-protect.sh 895cfd55042cef4ccbe15741d022456ddd9b
 # Workflow: update-amphetamine-power-protect — commit input optional
 ```
 
-Upstream (`x74353/Amphetamine-Power-Protect`) has no releases or tags — it just replaces the DMG on `main`. The script queries the GitHub API for the latest commit touching `DMG/Power Protect for Amphetamine.dmg`, pins the raw download URL to that **immutable commit SHA** (so the SHA256 is stable), derives the cask `version` from that commit's date (`YYYY.MM.DD`), computes the DMG SHA256, and patches `Casks/amphetamine-power-protect.rb`. Set `GITHUB_TOKEN` to lift the API rate limit.
+Upstream (`x74353/Amphetamine-Power-Protect`) has no releases or tags — it just replaces the DMG on `main`. The script queries the GitHub API for the latest commit touching `DMG/Power Protect for Amphetamine.dmg`, pins the raw download URL to that **immutable commit SHA** (so the SHA256 is stable), derives the cask `version` from that commit's timestamp (`YYYY.MM.DD.HHMMSS`, monotonic even for same-day DMG changes), computes the DMG SHA256, and patches `Casks/amphetamine-power-protect.rb`. Set `GITHUB_TOKEN` to lift the API rate limit.
 
 ## Validating changes
 
@@ -135,5 +135,5 @@ chore: init drod3763/tap homebrew tap
 - Update scripts patch Ruby source files via inline `ruby -e` — no gems needed, just `curl` + `shasum`/`sha256sum`.
 - RAR URL pattern: `rarmacos-arm-<compact_version>.tar.gz` where compact strips dots (e.g. `7.20` → `720`).
 - OpenIn Helper URL pattern: `OpenIn%20Helper%20<version>.zip` (space URL-encoded).
-- Power Protect has no upstream releases: the cask URL is pinned to a commit SHA (`raw.githubusercontent.com/x74353/Amphetamine-Power-Protect/<sha>/DMG/...`) and the version is that commit's date. The DMG holds a `.pkg`; the cask uses `pkg` + `uninstall pkgutil:` (macOS Installer handles the Touch ID/sudoers auth — no hand-rolled root writes).
+- Power Protect has no upstream releases: the cask URL is pinned to a commit SHA (`raw.githubusercontent.com/x74353/Amphetamine-Power-Protect/<sha>/DMG/...`) and the version is that commit's timestamp (`YYYY.MM.DD.HHMMSS`). The DMG holds a `.pkg`; the cask uses `pkg` + `uninstall pkgutil:` (macOS Installer handles the Touch ID/sudoers auth — no hand-rolled root writes).
 - PR merge goes through the `publish.yml` (`brew pr-pull`) workflow triggered by adding a `pr-pull` label.
