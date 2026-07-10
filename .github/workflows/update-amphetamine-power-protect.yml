@@ -33,6 +33,16 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Link the checkout as the tap
+        # Tap-qualified brew commands (style/audit/install below) resolve through Homebrew's
+        # taps dir, not the workspace. Symlink this checkout in so they validate and install
+        # exactly the cask the updater just wrote here — not a remote or pre-tapped copy.
+        run: |
+          tap_dir="$(brew --repository)/Library/Taps/drod3763/homebrew-tap"
+          rm -rf "$tap_dir"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
+
       - name: Update cask
         # Pass inputs through env, never interpolate ${{ }} into the shell body: GitHub
         # evaluates expressions before the shell parses the script, so a crafted commit input
@@ -51,11 +61,24 @@ jobs:
       - name: Validate cask
         run: brew style --cask drod3763/tap/amphetamine-power-protect && brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 
+      - name: Upload validated cask
+        # Upload BEFORE the install smoke test. `brew install` runs the pkg's installer
+        # scripts as root — the strongest code-execution vector — so if it were compromised it
+        # could edit the cask in the workspace after validation. Capturing the artifact here
+        # freezes the exact bytes that passed style/audit; the install step below still gates
+        # the job but can no longer alter what open-pr commits.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: amphetamine-power-protect-cask
+          path: Casks/amphetamine-power-protect.rb
+          if-no-files-found: error
+
       - name: Install / uninstall smoke test
         # Style/audit never install the pkg, so they can't prove the privileged install works
         # or that uninstall removes the sudoers grant. Exercise it end to end on the arm64
         # runner (passwordless sudo installs the notarized pkg headlessly) and assert the
-        # sudoers drop-in is created on install and gone after uninstall.
+        # sudoers drop-in is created on install and gone after uninstall. A failure here fails
+        # the job, so open-pr (needs: build) never publishes an installer that can't install.
         env:
           SUDOERS: /private/etc/sudoers.d/amphetamine_PowerProtect
         run: |
@@ -64,13 +87,6 @@ jobs:
           brew uninstall --cask drod3763/tap/amphetamine-power-protect
           test ! -e "$SUDOERS" || { echo "sudoers drop-in survived uninstall at $SUDOERS"; exit 1; }
           echo "install/uninstall verified: sudoers drop-in created then removed"
-
-      - name: Upload validated cask
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: amphetamine-power-protect-cask
-          path: Casks/amphetamine-power-protect.rb
-          if-no-files-found: error
 
   # The write token lives ONLY here, on a fresh runner that never touched the DMG/pkg. It
   # commits the exact cask the build job validated — no re-download, no re-run of the
