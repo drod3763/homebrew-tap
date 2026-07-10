@@ -36,7 +36,11 @@ jobs:
         # input could otherwise break quoting and run arbitrary commands. The script's own
         # 40-hex SHA validation then rejects anything malformed.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Deliberately NOT exposing GITHUB_TOKEN here: this step downloads and parses an
+          # upstream-controlled DMG (hdiutil/pkgutil), so a parser exploit must not be able to
+          # exfiltrate a write-capable repo token from the step environment. The single GitHub
+          # API call (commit lookup) runs unauthenticated — fine for one request per run — and
+          # the create-pull-request step below still receives the token in its own environment.
           COMMIT: ${{ inputs.commit }}
         run: |
           if [ -n "$COMMIT" ]; then
