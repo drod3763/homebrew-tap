@@ -16,6 +16,12 @@ cask "amphetamine-power-protect" do
 
   pkg "Install Power Protect.pkg"
 
+  # `uninstall pkgutil:` removes every file recorded in the package receipt (BOM) as root,
+  # then forgets the receipt — not merely `pkgutil --forget`. That deletes the privileged
+  # drop-in /private/etc/sudoers.d/amphetamine_PowerProtect on a normal `brew uninstall`, so
+  # no sudoers config is left behind. The per-user powerProtect.scpt is moved out of the
+  # receipt's path by the pkg's postinstall (into ~/Library), so it isn't in the BOM; it's a
+  # non-privileged user leftover cleaned by `zap` below.
   uninstall pkgutil: "com.if.pkg.AmphetaminePowerProtect"
 
   zap trash: "~/Library/Application Scripts/com.if.Amphetamine/powerProtect.scpt"
