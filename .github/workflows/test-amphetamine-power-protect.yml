@@ -1,0 +1,58 @@
+name: test-amphetamine-power-protect
+
+# The updater workflow's install/uninstall check only runs on dispatch/schedule, so it
+# never gates a PR. This workflow install-tests the privileged, sudoers-writing cask on
+# every PR that touches it, so a broken pkg path / receipt id / uninstall behavior can't
+# reach main and ship broken (or leave privileged state behind) on the first release.
+on:
+  pull_request:
+    paths:
+      - Casks/amphetamine-power-protect.rb
+      - .github/workflows/test-amphetamine-power-protect.yml
+
+# Read-only: this job installs an upstream pkg and needs no repo write access.
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    # arm64 runner (matches the cask's arch: :arm64 gate) with passwordless sudo, so the
+    # notarized pkg installs headlessly.
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Link the checkout as the tap
+        # brew style/audit/install require a tap-qualified name (path-based audit is
+        # disabled), so symlink this PR's checkout into Homebrew's taps dir. All the brew
+        # commands below then resolve drod3763/tap/... to exactly the code under review.
+        run: |
+          tap_dir="$(brew --repository)/Library/Taps/drod3763/homebrew-tap"
+          rm -rf "$tap_dir"                       # replace any remote-tapped copy the runner set up
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
+
+      - name: Style and audit
+        run: |
+          brew style --cask drod3763/tap/amphetamine-power-protect
+          brew audit --cask --strict drod3763/tap/amphetamine-power-protect
+
+      - name: Install / uninstall smoke test
+        # Assert the privileged sudoers drop-in is created on install and removed on
+        # uninstall — the core contract for a sudoers-writing pkg.
+        env:
+          SUDOERS: /private/etc/sudoers.d/amphetamine_PowerProtect
+        run: |
+          brew install --cask drod3763/tap/amphetamine-power-protect
+          test -f "$SUDOERS" || { echo "sudoers drop-in was not installed at $SUDOERS"; exit 1; }
+          brew uninstall --cask drod3763/tap/amphetamine-power-protect
+          test ! -e "$SUDOERS" || { echo "sudoers drop-in survived uninstall at $SUDOERS"; exit 1; }
+          echo "install/uninstall verified: sudoers drop-in created then removed"
