@@ -35,8 +35,19 @@ then
   fi
   commit_json="$(curl -fsSL "${auth_args[@]+"${auth_args[@]}"}" \
     "https://api.github.com/repos/${owner}/${repo}/commits/${commit}")"
-  date="$(printf '%s' "${commit_json}" |
-    ruby -rjson -e 'puts JSON.parse(STDIN.read).dig("commit", "committer", "date").to_s')"
+  # Refuse a manually-pinned commit that did not actually change the DMG: otherwise it would
+  # mint a newer cask version for identical installer bytes, which a later real-DMG-commit
+  # auto-update could then look like a downgrade against. The auto path already filters by
+  # this path, so this guard only matters for an explicit SHA argument.
+  date="$(printf '%s' "${commit_json}" | ruby -rjson -e '
+    c = JSON.parse(STDIN.read)
+    files = (c["files"] || []).map { |f| f["filename"] }
+    unless files.include?("DMG/Power Protect for Amphetamine.dmg")
+      STDERR.puts "commit #{ARGV[0]} does not modify the DMG; refusing to pin a version to unrelated bytes"
+      exit 1
+    end
+    puts c.dig("commit", "committer", "date").to_s
+  ' "${commit}")"
 else
   # Encode the path param so the space survives the query string intact.
   api_url="https://api.github.com/repos/${owner}/${repo}/commits?path=${dmg_path_encoded}&per_page=1"
