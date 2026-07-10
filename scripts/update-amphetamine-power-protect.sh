@@ -170,7 +170,26 @@ then
       "${expected_id}" "${found_ids}" >&2
     exit 1
   fi
-  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s)\n' \
+
+  # Freeze the installer's pre/postinstall and distribution scripts. Pkg scripts run
+  # privileged and can create files outside the BOM (another sudoers drop-in, a LaunchDaemon)
+  # that `brew uninstall` would not remove. Receipt/signature checks don't cover that. The
+  # DMG sha256 pins today's bytes, but the auto-updater would otherwise silently accept a
+  # future commit whose scripts changed — so pin a digest of every install script and refuse
+  # on any change, forcing a human to review new scripts before re-baselining this value.
+  expected_scripts_digest="a9d906b93e62118185b5b68cec4870fc7f4a314faa868502669427d4f0db563f"
+  scripts_digest="$(find "${work_dir}/pkg" -path '*/Scripts/*' -type f -exec shasum -a 256 {} + |
+    awk '{print $1}' | sort | shasum -a 256 | cut -d' ' -f1)"
+  if [[ "${scripts_digest}" != "${expected_scripts_digest}" ]]
+  then
+    printf 'Installer scripts changed (digest %s, expected %s).\n' \
+      "${scripts_digest}" "${expected_scripts_digest}" >&2
+    printf 'Review the new pre/postinstall scripts for privileged side effects, then update\n' >&2
+    printf 'expected_scripts_digest. Refusing update.\n' >&2
+    exit 1
+  fi
+
+  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s, scripts pinned)\n' \
     "${expected_pkg}" "${expected_id}" "${expected_team_id}"
 elif [[ "${AMPHETAMINE_PP_ALLOW_UNVERIFIED:-}" == "1" ]]
 then
