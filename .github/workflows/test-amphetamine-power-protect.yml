@@ -53,6 +53,13 @@ jobs:
         # reproduces the cask byte-for-byte; a tampered version/sha or a DMG whose
         # scripts/sudoers/receipts changed makes the updater fail or produce a diff. This
         # gives a hand-edited PR the same guarantees as an automated update.
+        #
+        # Trust boundary: this runs the updater/verifier from the PR checkout, so a PR that
+        # edits scripts/update-amphetamine-power-protect.sh could also weaken the checks. That
+        # is unavoidable in a self-hosted verifier (running the base copy instead would reject
+        # every legitimate digest re-baseline, which lives in that same script). Changes to the
+        # updater/verifier are security-critical and gated by human review — the auto-update
+        # PRs never touch it, so for them this check is fully trustworthy.
         run: |
           commit="$(sed -n 's/^[[:space:]]*version "[^,]*,\([0-9a-f]\{40\}\)".*/\1/p' \
             Casks/amphetamine-power-protect.rb | head -1)"

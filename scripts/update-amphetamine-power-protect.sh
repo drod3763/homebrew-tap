@@ -233,15 +233,19 @@ then
     exit 1
   fi
 
-  # Pin the CONTENTS of the privileged sudoers grant specifically. The path set (above) can't
-  # see a rule that widens NOPASSWD scope within the same file, and the user .scpt's contents
-  # may legitimately change — but any change to a passwordless-sudo grant is a privilege-scope
-  # change that must be human-reviewed, not accepted as an opaque sha256 bump.
+  # Pin the CONTENTS of the two files that define this package's privileged behavior: the
+  # sudoers grant (the passwordless-sudo rule) and powerProtect.scpt (the AppleScript that
+  # exercises it). The path/metadata pin above can't see a rule that widens NOPASSWD scope
+  # within the same file, nor a rewrite of the script logic. Because the open-pr diff-gate
+  # surfaces only version/sha changes, an unpinned content change would be invisible to PR
+  # review — so freeze both and require a human to review any change before re-baselining.
   expected_sudoers_digest="ec97dfc137afb5278e01a069f96bf8ecc3862250f07fc0d00b0d9a330a3c5e93"
+  expected_scpt_digest="c616365813186116ddc73be8294a446f818464c13b2570525a15fd2162458300"
   sudoers_file="$(find "${work_dir}/pkg" -path '*/sudoers.d/amphetamine_PowerProtect' -type f | head -1)"
-  if [[ -z "${sudoers_file}" ]]
+  scpt_file="$(find "${work_dir}/pkg" -path '*/com.if.Amphetamine/powerProtect.scpt' -type f | head -1)"
+  if [[ -z "${sudoers_file}" || -z "${scpt_file}" ]]
   then
-    printf 'sudoers drop-in not found in the expanded payload; refusing update\n' >&2
+    printf 'sudoers drop-in or powerProtect.scpt not found in the expanded payload; refusing update\n' >&2
     exit 1
   fi
   sudoers_digest="$(shasum -a 256 "${sudoers_file}" | cut -d' ' -f1)"
@@ -253,8 +257,17 @@ then
     printf 'Refusing update.\n' >&2
     exit 1
   fi
+  scpt_digest="$(shasum -a 256 "${scpt_file}" | cut -d' ' -f1)"
+  if [[ "${scpt_digest}" != "${expected_scpt_digest}" ]]
+  then
+    printf 'powerProtect.scpt contents changed (digest %s, expected %s).\n' \
+      "${scpt_digest}" "${expected_scpt_digest}" >&2
+    printf 'Review the new script (it drives the passwordless-sudo grant), then update\n' >&2
+    printf 'expected_scpt_digest. Refusing update.\n' >&2
+    exit 1
+  fi
 
-  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s; scripts, paths & sudoers pinned)\n' \
+  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s; scripts, paths, sudoers & scpt pinned)\n' \
     "${expected_pkg}" "${expected_id}" "${expected_team_id}"
 elif [[ "${AMPHETAMINE_PP_ALLOW_UNVERIFIED:-}" == "1" ]]
 then
