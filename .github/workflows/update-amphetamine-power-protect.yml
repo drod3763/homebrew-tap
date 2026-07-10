@@ -61,32 +61,18 @@ jobs:
       - name: Validate cask
         run: brew style --cask drod3763/tap/amphetamine-power-protect && brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 
+      # No `brew install` smoke test here: the pkg's installation-check refuses to install
+      # unless Amphetamine.app is present, so it can't run headlessly. The full pkg contract
+      # (notarization, Developer ID, receipts, scripts, payload, sudoers) is already verified
+      # inside the `Update cask` step, which mounts and expands the DMG.
       - name: Upload validated cask
-        # Upload BEFORE the install smoke test. `brew install` runs the pkg's installer
-        # scripts as root — the strongest code-execution vector — so if it were compromised it
-        # could edit the cask in the workspace after validation. Capturing the artifact here
-        # freezes the exact bytes that passed style/audit; the install step below still gates
-        # the job but can no longer alter what open-pr commits.
+        # Freeze the exact bytes that passed the updater's verification + style/audit as the
+        # artifact open-pr commits; open-pr's diff-gate then bounds it to version/sha changes.
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: amphetamine-power-protect-cask
           path: Casks/amphetamine-power-protect.rb
           if-no-files-found: error
-
-      - name: Install / uninstall smoke test
-        # Style/audit never install the pkg, so they can't prove the privileged install works
-        # or that uninstall removes the sudoers grant. Exercise it end to end on the arm64
-        # runner (passwordless sudo installs the notarized pkg headlessly) and assert the
-        # sudoers drop-in is created on install and gone after uninstall. A failure here fails
-        # the job, so open-pr (needs: build) never publishes an installer that can't install.
-        env:
-          SUDOERS: /private/etc/sudoers.d/amphetamine_PowerProtect
-        run: |
-          brew install --cask drod3763/tap/amphetamine-power-protect
-          test -f "$SUDOERS" || { echo "sudoers drop-in was not installed at $SUDOERS"; exit 1; }
-          brew uninstall --cask drod3763/tap/amphetamine-power-protect
-          test ! -e "$SUDOERS" || { echo "sudoers drop-in survived uninstall at $SUDOERS"; exit 1; }
-          echo "install/uninstall verified: sudoers drop-in created then removed"
 
   # The write token lives ONLY here, on a fresh runner that never touched the DMG/pkg. It
   # commits the exact cask the build job validated — no re-download, no re-run of the

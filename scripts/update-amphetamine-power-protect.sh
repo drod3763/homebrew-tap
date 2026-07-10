@@ -90,9 +90,8 @@ url="https://raw.githubusercontent.com/${owner}/${repo}/${commit}/${dmg_path_enc
 # downgrade; an equal version (idempotent re-run) is fine. Edit the cask by hand for a
 # deliberate rollback.
 current_version="$(sed -n 's/.*version "\([^",]*\),.*/\1/p' "${cask_path}" | head -1)"
-if [[ -n "${current_version}" ]] &&
-  ! ruby -e 'exit(Gem::Version.new(ARGV[0]) >= Gem::Version.new(ARGV[1]) ? 0 : 1)' \
-    "${version}" "${current_version}"
+version_compare='exit(Gem::Version.new(ARGV[0]) >= Gem::Version.new(ARGV[1]) ? 0 : 1)'
+if [[ -n "${current_version}" ]] && ! ruby -e "${version_compare}" "${version}" "${current_version}"
 then
   printf 'New version %s is lower than the current cask version %s (backdated/older commit?).\n' \
     "${version}" "${current_version}" >&2
@@ -271,14 +270,12 @@ then
     "${expected_pkg}" "${expected_id}" "${expected_team_id}"
 elif [[ "${AMPHETAMINE_PP_ALLOW_UNVERIFIED:-}" == "1" ]]
 then
-  printf 'WARNING: hdiutil/pkgutil unavailable and AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 set; '\
-'writing cask WITHOUT pkg contract/signature verification\n' >&2
+  printf 'WARNING: hdiutil/pkgutil unavailable and AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 set; writing cask WITHOUT pkg contract/signature verification\n' >&2
 else
   # Fail closed: this cask installs a root-running, sudoers-writing pkg. Refuse to mint a
   # version/SHA bump we could not verify (wrong pkg, tampered payload, missing notarization).
   # Run on macOS (hdiutil/pkgutil), or set AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 to override.
-  printf 'ERROR: cannot verify the pkg contract without hdiutil/pkgutil (needs macOS); '\
-'refusing to update. Set AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 to override.\n' >&2
+  printf 'ERROR: cannot verify the pkg contract without hdiutil/pkgutil (needs macOS); refusing to update. Set AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 to override.\n' >&2
   exit 1
 fi
 
