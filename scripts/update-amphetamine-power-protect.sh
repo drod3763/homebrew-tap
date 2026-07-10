@@ -195,9 +195,12 @@ then
   # DMG sha256 pins today's bytes, but the auto-updater would otherwise silently accept a
   # future commit whose scripts changed — so pin a digest of every install script and refuse
   # on any change, forcing a human to review new scripts before re-baselining this value.
-  expected_scripts_digest="a9d906b93e62118185b5b68cec4870fc7f4a314faa868502669427d4f0db563f"
-  scripts_digest="$(find "${work_dir}/pkg" -path '*/Scripts/*' -type f -exec shasum -a 256 {} + |
-    awk '{print $1}' | sort | shasum -a 256 | cut -d' ' -f1)"
+  # The digest binds each script's relative path (its entrypoint name — preinstall vs
+  # postinstall, component location) to its content, so a rename or a phase swap of two
+  # same-content scripts also trips it.
+  expected_scripts_digest="7400fd20105c95bf62be7af38a76da2880dbfb42b85359e8f02e1176a8066d45"
+  scripts_digest="$( (cd "${work_dir}/pkg" && find . -path '*/Scripts/*' -type f -exec shasum -a 256 {} +) |
+    sort | shasum -a 256 | cut -d' ' -f1)"
   if [[ "${scripts_digest}" != "${expected_scripts_digest}" ]]
   then
     printf 'Installer scripts changed (digest %s, expected %s).\n' \
