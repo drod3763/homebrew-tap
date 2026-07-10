@@ -45,6 +45,29 @@ jobs:
           brew style --cask drod3763/tap/amphetamine-power-protect
           brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 
+      - name: Verify the pinned DMG against the full contract
+        # style/audit and the install test don't check the updater's deep guarantees
+        # (notarization, Developer ID, receipt set, installer script + payload + sudoers
+        # pins). Re-run the updater for the commit this cask pins: it re-verifies that DMG
+        # against every pin and regenerates the cask. A legitimate, fully-verified pin
+        # reproduces the cask byte-for-byte; a tampered version/sha or a DMG whose
+        # scripts/sudoers/receipts changed makes the updater fail or produce a diff. This
+        # gives a hand-edited PR the same guarantees as an automated update.
+        run: |
+          commit="$(sed -n 's/^[[:space:]]*version "[^,]*,\([0-9a-f]\{40\}\)".*/\1/p' \
+            Casks/amphetamine-power-protect.rb | head -1)"
+          if [ -z "$commit" ]; then
+            echo "Could not read the pinned commit from the cask version." >&2
+            exit 1
+          fi
+          scripts/update-amphetamine-power-protect.sh "$commit"
+          if ! git diff --quiet -- Casks/amphetamine-power-protect.rb; then
+            echo "Cask does not match the updater's verified output for pinned commit $commit:" >&2
+            git --no-pager diff -- Casks/amphetamine-power-protect.rb >&2
+            exit 1
+          fi
+          echo "Pinned DMG passes the full contract and the cask matches the updater's output."
+
       - name: Install / uninstall smoke test
         # Assert the privileged sudoers drop-in is created on install and removed on
         # uninstall — the core contract for a sudoers-writing pkg.
