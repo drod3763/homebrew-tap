@@ -61,6 +61,10 @@ jobs:
         # every legitimate digest re-baseline, which lives in that same script). Changes to the
         # updater/verifier are security-critical and gated by human review — the auto-update
         # PRs never touch it, so for them this check is fully trustworthy.
+        env:
+          # Read-only token (job is permissions: contents:read) to authenticate the updater's
+          # GitHub API commit lookup; unauthenticated calls 403 on the shared runner rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           commit="$(sed -n 's/^[[:space:]]*version "[^,]*,\([0-9a-f]\{40\}\)".*/\1/p' \
             Casks/amphetamine-power-protect.rb | head -1)"

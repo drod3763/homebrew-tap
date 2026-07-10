@@ -47,9 +47,13 @@ jobs:
         # Pass inputs through env, never interpolate ${{ }} into the shell body: GitHub
         # evaluates expressions before the shell parses the script, so a crafted commit input
         # could otherwise break quoting and run arbitrary commands. The script's own 40-hex
-        # SHA validation then rejects anything malformed. The commit lookup runs unauthenticated
-        # (no token in this job at all) — fine for one request per run.
+        # SHA validation then rejects anything malformed.
         env:
+          # This job is permissions: contents:read, so GITHUB_TOKEN here is READ-ONLY. It
+          # authenticates the GitHub API commit lookup (unauthenticated calls hit the shared
+          # runner's 60/hr rate limit → 403) but cannot write to the repo or open PRs even if
+          # the DMG parser were exploited. The write-capable token lives only in the open-pr job.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMIT: ${{ inputs.commit }}
         run: |
           if [ -n "$COMMIT" ]; then
