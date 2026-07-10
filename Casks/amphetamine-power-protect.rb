@@ -12,6 +12,10 @@ cask "amphetamine-power-protect" do
   desc "Closed-Display Mode power-transition fix for the Amphetamine app"
   homepage "https://x74353.github.io/Amphetamine-Power-Protect/"
 
+  # Upstream scopes Power Protect to Apple Silicon laptops (the Closed-Display Mode power
+  # bug is Apple-Silicon-specific). Gate on arm64 so Intel machines can't install a
+  # passwordless-sudo grant they have no need for — least privilege for a root-running pkg.
+  depends_on arch:  :arm64
   depends_on macos: :big_sur
 
   pkg "Install Power Protect.pkg"
