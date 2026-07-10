@@ -25,7 +25,10 @@ cask "amphetamine-power-protect" do
   # per-user powerProtect.scpt is moved out of the receipt path by the pkg's postinstall
   # (into ~/Library), so it isn't in the BOM; it's a non-privileged user leftover cleaned by
   # `zap` below.
-  uninstall pkgutil: "com.if.pkg.AmphetaminePowerProtect",
+  # Anchored, dot-escaped Regexp: `pkgutil:` is matched as a regex, so a bare string would
+  # treat each `.` as a wildcard and match unanchored — letting an unrelated receipt id be
+  # selected and its files removed as root. \A...\z pins it to exactly this package id.
+  uninstall pkgutil: /\Acom\.if\.pkg\.AmphetaminePowerProtect\z/,
             delete:  "/private/etc/sudoers.d/amphetamine_PowerProtect"
 
   zap trash: "~/Library/Application Scripts/com.if.Amphetamine/powerProtect.scpt"

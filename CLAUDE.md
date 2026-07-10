@@ -85,6 +85,8 @@ scripts/update-amphetamine-power-protect.sh 895cfd55042cef4ccbe15741d022456ddd9b
 
 Upstream (`x74353/Amphetamine-Power-Protect`) has no releases or tags — it just replaces the DMG on `main`. The script queries the GitHub API for the latest commit touching `DMG/Power Protect for Amphetamine.dmg`, pins the raw download URL to that **immutable commit SHA** (so the SHA256 is stable), derives the cask `version` from that commit's timestamp (`YYYY.MM.DD.HHMMSS`, monotonic even for same-day DMG changes), computes the DMG SHA256, and patches `Casks/amphetamine-power-protect.rb`. Set `GITHUB_TOKEN` to lift the API rate limit.
 
+Because the cask installs a root-running, sudoers-writing `.pkg`, the updater **verifies the DMG contract before writing** — it mounts the DMG and asserts it ships `Install Power Protect.pkg`, notarized and signed by the fork author's Developer ID (`U5SR49N3PT`), with receipt `com.if.pkg.AmphetaminePowerProtect`. This needs macOS (`hdiutil`/`pkgutil`); the update workflow runs on a macOS runner for this reason. Off macOS the script **fails closed** unless `AMPHETAMINE_PP_ALLOW_UNVERIFIED=1` is set. A manually-passed commit SHA is rejected unless that commit actually modified the DMG.
+
 ## Validating changes
 
 ```bash

@@ -113,7 +113,10 @@ fi
 # root-running package. Requires macOS (hdiutil/pkgutil); elsewhere it warns and skips
 # (fail-open only off-platform, where mounting an Apple DMG isn't possible).
 expected_pkg="$(sed -n 's/^[[:space:]]*pkg "\(.*\)"[[:space:]]*$/\1/p' "${cask_path}" | head -1)"
-expected_id="$(sed -n 's/.*pkgutil: "\([^"]*\)".*/\1/p' "${cask_path}" | head -1)"
+# Receipt id lives in the `pkgutil:` stanza, which is an anchored Regexp (%r{\A...\z}); grab
+# the com.if.pkg.* token whether the dots are escaped (regexp) or bare (plain string), then
+# drop backslashes to recover the literal id.
+expected_id="$(grep -oE 'com\\?\.if\\?\.pkg\\?\.[A-Za-z0-9]+' "${cask_path}" | head -1 | sed 's/\\//g')"
 
 if [[ -z "${expected_pkg}" || -z "${expected_id}" ]]
 then
@@ -164,8 +167,17 @@ then
   fi
   printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s)\n' \
     "${expected_pkg}" "${expected_id}" "${expected_team_id}"
+elif [[ "${AMPHETAMINE_PP_ALLOW_UNVERIFIED:-}" == "1" ]]
+then
+  printf 'WARNING: hdiutil/pkgutil unavailable and AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 set; '\
+'writing cask WITHOUT pkg contract/signature verification\n' >&2
 else
-  printf 'WARNING: hdiutil/pkgutil unavailable (non-macOS); skipped pkg contract verification\n' >&2
+  # Fail closed: this cask installs a root-running, sudoers-writing pkg. Refuse to mint a
+  # version/SHA bump we could not verify (wrong pkg, tampered payload, missing notarization).
+  # Run on macOS (hdiutil/pkgutil), or set AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 to override.
+  printf 'ERROR: cannot verify the pkg contract without hdiutil/pkgutil (needs macOS); '\
+'refusing to update. Set AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 to override.\n' >&2
+  exit 1
 fi
 
 # The cask URL interpolates version.after_comma, so only the version + sha256 lines change.
