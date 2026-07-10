@@ -21,6 +21,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Don't persist the write-capable job token in .git/config: this workspace parses
+          # an upstream-controlled DMG (hdiutil/pkgutil), so a parser exploit must not be able
+          # to recover repo-write credentials from git config. Nothing here pushes from the
+          # workspace — create-pull-request below authenticates with its own token.
+          persist-credentials: false
 
       - name: Set up Homebrew
         # Pinned to a full commit SHA (not the mutable @main branch): this job holds a
