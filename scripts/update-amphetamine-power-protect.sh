@@ -79,6 +79,22 @@ fi
 version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.${BASH_REMATCH[4]}${BASH_REMATCH[5]}${BASH_REMATCH[6]}"
 url="https://raw.githubusercontent.com/${owner}/${repo}/${commit}/${dmg_path_encoded}"
 
+# Git committer dates are author-controlled and not guaranteed to increase with path history,
+# and a manually-pinned (or backdated) commit could be older than what's shipped. Refuse to
+# write a version below the current cask version so `brew upgrade` never silently stalls on a
+# downgrade; an equal version (idempotent re-run) is fine. Edit the cask by hand for a
+# deliberate rollback.
+current_version="$(sed -n 's/.*version "\([^",]*\),.*/\1/p' "${cask_path}" | head -1)"
+if [[ -n "${current_version}" ]] &&
+  ! ruby -e 'exit(Gem::Version.new(ARGV[0]) >= Gem::Version.new(ARGV[1]) ? 0 : 1)' \
+    "${version}" "${current_version}"
+then
+  printf 'New version %s is lower than the current cask version %s (backdated/older commit?).\n' \
+    "${version}" "${current_version}" >&2
+  printf 'Refusing to write a downgrade. Edit the cask manually for an intentional rollback.\n' >&2
+  exit 1
+fi
+
 # Download once to a temp file so the same bytes are both hashed and contract-verified.
 work_dir="$(mktemp -d)"
 mount_point=""
@@ -189,7 +205,24 @@ then
     exit 1
   fi
 
-  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s, scripts pinned)\n' \
+  # Pin the set of installed payload PATHS (from the BOM), not their contents. `uninstall
+  # pkgutil:` already removes every BOM path, but a new privileged path — a LaunchDaemon, an
+  # extra sudoers drop-in — is a behavior change that warrants human review and possibly new
+  # cask cleanup. Freezing the path set refuses such structural changes while still allowing
+  # content updates to existing files (those only move the DMG sha256, which is pinned too).
+  expected_payload_digest="80820976c435c3a7fd4da8deee36b4c57f7672f447eec5c0205b973288090202"
+  payload_digest="$(find "${work_dir}/pkg" -name Bom -exec lsbom -s {} + |
+    sort -u | shasum -a 256 | cut -d' ' -f1)"
+  if [[ "${payload_digest}" != "${expected_payload_digest}" ]]
+  then
+    printf 'Installer payload paths changed (digest %s, expected %s).\n' \
+      "${payload_digest}" "${expected_payload_digest}" >&2
+    printf 'A new/removed installed path (e.g. a LaunchDaemon or sudoers drop-in) needs human\n' >&2
+    printf 'review and matching cask uninstall handling, then update expected_payload_digest.\n' >&2
+    exit 1
+  fi
+
+  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s, scripts+paths pinned)\n' \
     "${expected_pkg}" "${expected_id}" "${expected_team_id}"
 elif [[ "${AMPHETAMINE_PP_ALLOW_UNVERIFIED:-}" == "1" ]]
 then
