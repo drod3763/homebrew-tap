@@ -109,6 +109,30 @@ jobs:
           name: amphetamine-power-protect-cask
           path: Casks
 
+      - name: Constrain the generated cask to version/sha256 changes
+        # The build job derives the cask by parsing an untrusted DMG (hdiutil/pkgutil), so a
+        # parser exploit there could inject arbitrary cask stanzas into the artifact this
+        # write-token job commits. Bound the blast radius: the only legitimate change a DMG
+        # bump makes is the `version` and `sha256` lines. Diff the downloaded artifact against
+        # the committed cask and refuse if anything else changed — a compromised build job can
+        # then only propose a human-reviewable version/sha bump, never new cask code.
+        run: |
+          diff="$(git diff -- Casks/amphetamine-power-protect.rb)"
+          if [ -z "$diff" ]; then
+            echo "No change to the cask; nothing to open a PR for." >&2
+            exit 1
+          fi
+          # Changed content lines (drop file headers); anything that isn't a version/sha256 line is illegal.
+          illegal="$(printf '%s\n' "$diff" \
+            | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' \
+            | grep -vE '^[+-][[:space:]]*(version "|sha256 ")' || true)"
+          if [ -n "$illegal" ]; then
+            echo "Generated cask changed lines other than version/sha256 — refusing to open PR:" >&2
+            printf '%s\n' "$illegal" >&2
+            exit 1
+          fi
+          echo "Cask diff is confined to version/sha256 — safe to publish."
+
       - name: Read updated version
         id: read_version
         run: |
