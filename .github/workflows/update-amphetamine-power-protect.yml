@@ -115,20 +115,24 @@ jobs:
         # write-token job commits. Bound the blast radius: the only legitimate change a DMG
         # bump makes is the `version` and `sha256` lines. Diff the downloaded artifact against
         # the committed cask and refuse if anything else changed — a compromised build job can
-        # then only propose a human-reviewable version/sha bump, never new cask code.
+        # then only propose a human-reviewable version/sha bump, never new cask code. Note the
+        # `url` line (host/repo) is itself covered, so a bump can't redirect off x74353.
+        id: gate
         run: |
           diff="$(git diff -- Casks/amphetamine-power-protect.rb)"
           if [ -z "$diff" ]; then
-            echo "No change to the cask; nothing to open a PR for." >&2
-            exit 1
+            # No upstream change is the normal weekly steady state — succeed and skip the PR,
+            # rather than failing the scheduled run and drowning real failures in alert noise.
+            echo "No upstream change; nothing to update."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           # Validate every CHANGED line — additions AND deletions — against strict, fully-
           # anchored patterns (not a prefix check, which would accept smuggled Ruby like
           # `version "x,<hex>"; system(...) #` or `sha256 :no_check`). Checking deletions too
           # matters: a compromised artifact could bump version/sha256 while DELETING security
           # lines (the `uninstall` sudoers cleanup, `depends_on arch`, `pkg`, `verified`).
-          # Each +/- content line must be EXACTLY a well-formed version or sha256 line, so the
-          # only permissible change is swapping those two values.
+          # Each +/- content line must be EXACTLY a well-formed version or sha256 line.
           changed="$(printf '%s\n' "$diff" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
           illegal="$(printf '%s\n' "$changed" \
             | grep -vE '^[+-]  version "[0-9][0-9.]*,[0-9a-f]{40}"$' \
@@ -138,10 +142,23 @@ jobs:
             printf '%s\n' "$illegal" >&2
             exit 1
           fi
+          # Require exactly one removed + one added line for each of version and sha256, so a
+          # compromised artifact can't smuggle in duplicate stanzas (which would break parsing
+          # or shadow the real values) while every individual line still looks well-formed.
+          for kind in version sha256; do
+            adds="$(printf '%s\n' "$changed" | grep -cE "^\+  ${kind} " || true)"
+            dels="$(printf '%s\n' "$changed" | grep -cE "^-  ${kind} " || true)"
+            if [ "$adds" != "1" ] || [ "$dels" != "1" ]; then
+              echo "Expected exactly one changed ${kind} line (got +${adds}/-${dels}) — refusing." >&2
+              exit 1
+            fi
+          done
           echo "Cask diff is confined to the version/sha256 values — safe to publish."
+          echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Read updated version
         id: read_version
+        if: steps.gate.outputs.changed == 'true'
         run: |
           # Plain shell (this job sets up no Ruby/Homebrew). Use the date before the comma —
           # version.csv.first — as the human-facing PR version; the commit after the comma is
@@ -156,6 +173,7 @@ jobs:
       - name: Create pull request
         # Pinned to a full commit SHA (not the mutable @v7 tag): this third-party action runs
         # with the job's write-capable GITHUB_TOKEN. Bump deliberately.
+        if: steps.gate.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
           branch: update-amphetamine-power-protect-${{ steps.read_version.outputs.version }}
