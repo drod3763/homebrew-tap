@@ -122,20 +122,23 @@ jobs:
             echo "No change to the cask; nothing to open a PR for." >&2
             exit 1
           fi
-          # Validate the ADDED lines (what gets committed) against strict, fully-anchored
-          # patterns — not a prefix check. A prefix check would accept executable Ruby smuggled
-          # onto an allowed line, e.g. `version "x,<hex>"; system(...) #` or `sha256 :no_check`.
-          # Each added content line must be EXACTLY a well-formed version or sha256 line.
-          added="$(printf '%s\n' "$diff" | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
-          illegal="$(printf '%s\n' "$added" \
-            | grep -vE '^\+  version "[0-9][0-9.]*,[0-9a-f]{40}"$' \
-            | grep -vE '^\+  sha256 "[0-9a-f]{64}"$' || true)"
+          # Validate every CHANGED line — additions AND deletions — against strict, fully-
+          # anchored patterns (not a prefix check, which would accept smuggled Ruby like
+          # `version "x,<hex>"; system(...) #` or `sha256 :no_check`). Checking deletions too
+          # matters: a compromised artifact could bump version/sha256 while DELETING security
+          # lines (the `uninstall` sudoers cleanup, `depends_on arch`, `pkg`, `verified`).
+          # Each +/- content line must be EXACTLY a well-formed version or sha256 line, so the
+          # only permissible change is swapping those two values.
+          changed="$(printf '%s\n' "$diff" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
+          illegal="$(printf '%s\n' "$changed" \
+            | grep -vE '^[+-]  version "[0-9][0-9.]*,[0-9a-f]{40}"$' \
+            | grep -vE '^[+-]  sha256 "[0-9a-f]{64}"$' || true)"
           if [ -n "$illegal" ]; then
-            echo "Generated cask has changed lines that are not a well-formed version/sha256 — refusing:" >&2
+            echo "Generated cask changed lines other than the version/sha256 values — refusing:" >&2
             printf '%s\n' "$illegal" >&2
             exit 1
           fi
-          echo "Cask diff is confined to well-formed version/sha256 lines — safe to publish."
+          echo "Cask diff is confined to the version/sha256 values — safe to publish."
 
       - name: Read updated version
         id: read_version
