@@ -94,12 +94,13 @@ else
   exit 1
 fi
 
-# Verify the DMG still ships the exact pkg + receipt id the cask hardcodes in its `pkg` and
-# `uninstall pkgutil:` stanzas. Without this, a scheduled update would accept any future
-# upstream DMG that merely downloads — style/audit never mount or install it — and could
-# auto-open a passing PR that installs the wrong package or strands privileged files on
-# uninstall. Requires macOS (hdiutil/pkgutil); elsewhere it warns and skips (fail-open only
-# off-platform, where mounting an Apple DMG isn't possible).
+# Verify the DMG still ships the exact pkg the cask installs: notarized + signed by the
+# fork author's Developer ID (primary guard), plus the pkg filename and receipt id the cask
+# hardcodes in its `pkg` / `uninstall pkgutil:` stanzas (secondary guards). Without this a
+# scheduled update would accept any future upstream DMG that merely downloads — style/audit
+# never mount or install it — and could auto-open a passing PR that installs a tampered
+# root-running package. Requires macOS (hdiutil/pkgutil); elsewhere it warns and skips
+# (fail-open only off-platform, where mounting an Apple DMG isn't possible).
 expected_pkg="$(sed -n 's/^[[:space:]]*pkg "\(.*\)"[[:space:]]*$/\1/p' "${cask_path}" | head -1)"
 expected_id="$(sed -n 's/.*pkgutil: "\([^"]*\)".*/\1/p' "${cask_path}" | head -1)"
 
@@ -122,6 +123,24 @@ then
     exit 1
   fi
 
+  # Primary trust anchor: the pkg is notarized and signed by the fork author's Apple
+  # Developer ID. The receipt/filename checks below are strings a compromised upstream could
+  # preserve while swapping the root-running payload; the signature it cannot forge. Fail
+  # closed unless the installer is Apple-notarized AND signed by this Team ID.
+  expected_team_id="U5SR49N3PT" # Developer ID Installer: William Gustafson
+  signature="$(pkgutil --check-signature "${mount_point}/${expected_pkg}" 2>&1)"
+  if ! printf '%s' "${signature}" | grep -q "trusted by the Apple notary service"
+  then
+    printf 'pkg is not notarized by Apple; refusing update\n%s\n' "${signature}" >&2
+    exit 1
+  fi
+  if ! printf '%s' "${signature}" | grep -q "(${expected_team_id})"
+  then
+    printf 'pkg not signed by expected Developer ID %s; refusing update\n%s\n' \
+      "${expected_team_id}" "${signature}" >&2
+    exit 1
+  fi
+
   pkgutil --expand "${mount_point}/${expected_pkg}" "${work_dir}/pkg"
   found_id="$(find "${work_dir}/pkg" -name PackageInfo -exec \
     sed -n 's/.*identifier="\([^"]*\)".*/\1/p' {} + 2>/dev/null | head -1)"
@@ -132,7 +151,8 @@ then
       "${found_id}" "${expected_id}" >&2
     exit 1
   fi
-  printf 'Verified DMG ships "%s" with receipt %s\n' "${expected_pkg}" "${expected_id}"
+  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s)\n' \
+    "${expected_pkg}" "${expected_id}" "${expected_team_id}"
 else
   printf 'WARNING: hdiutil/pkgutil unavailable (non-macOS); skipped pkg contract verification\n' >&2
 fi

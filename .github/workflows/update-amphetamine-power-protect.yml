@@ -23,7 +23,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+        # Pinned to a full commit SHA (not the mutable @main branch): this job holds a
+        # write-capable GITHUB_TOKEN, so an unexpected change on that external branch must
+        # not run here. Bump deliberately when updating the action.
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
