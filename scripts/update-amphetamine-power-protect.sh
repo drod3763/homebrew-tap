@@ -18,12 +18,18 @@ then
   exit 1
 fi
 
-# Optional token lifts the unauthenticated GitHub API rate limit (used in CI).
-auth_args=()
-if [[ -n "${GITHUB_TOKEN:-}" ]]
-then
-  auth_args=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
-fi
+# Fetch a GitHub API URL, adding the auth header only when a token is present (a token lifts
+# the unauthenticated rate limit; the build job runs without one). A helper — rather than a
+# conditionally-populated array spliced in with ${arr[@]+...} — keeps the token-optional path
+# unambiguous under `set -u` on every bash version.
+gh_api_get() {
+  if [[ -n "${GITHUB_TOKEN:-}" ]]
+  then
+    curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" "$1"
+  else
+    curl -fsSL "$1"
+  fi
+}
 
 if [[ $# -eq 1 ]]
 then
@@ -33,8 +39,7 @@ then
     printf 'commit sha must be 40 lowercase hex chars\n' >&2
     exit 1
   fi
-  commit_json="$(curl -fsSL "${auth_args[@]+"${auth_args[@]}"}" \
-    "https://api.github.com/repos/${owner}/${repo}/commits/${commit}")"
+  commit_json="$(gh_api_get "https://api.github.com/repos/${owner}/${repo}/commits/${commit}")"
   # Refuse a manually-pinned commit that did not actually change the DMG: otherwise it would
   # mint a newer cask version for identical installer bytes, which a later real-DMG-commit
   # auto-update could then look like a downgrade against. The auto path already filters by
@@ -51,7 +56,7 @@ then
 else
   # Encode the path param so the space survives the query string intact.
   api_url="https://api.github.com/repos/${owner}/${repo}/commits?path=${dmg_path_encoded}&per_page=1"
-  commit_json="$(curl -fsSL "${auth_args[@]+"${auth_args[@]}"}" "${api_url}")"
+  commit_json="$(gh_api_get "${api_url}")"
   commit_line="$(printf '%s' "${commit_json}" | ruby -rjson -e '
     arr = JSON.parse(STDIN.read)
     raise "no commits found for DMG path" if !arr.is_a?(Array) || arr.empty?
