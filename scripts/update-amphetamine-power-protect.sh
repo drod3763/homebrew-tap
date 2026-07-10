@@ -156,13 +156,18 @@ then
   fi
 
   pkgutil --expand "${mount_point}/${expected_pkg}" "${work_dir}/pkg"
-  found_id="$(find "${work_dir}/pkg" -name PackageInfo -exec \
-    sed -n 's/.*identifier="\([^"]*\)".*/\1/p' {} + 2>/dev/null | head -1)"
+  # Enumerate ALL component receipts and require the set to be exactly the one the cask
+  # uninstalls. Matching just the first id (head -1) would let a future multi-component
+  # product pkg pass while Homebrew installs extra components the cask never removes —
+  # leaving files or privileged config behind on uninstall.
+  found_ids="$(find "${work_dir}/pkg" -name PackageInfo -exec \
+    sed -n 's/.*identifier="\([^"]*\)".*/\1/p' {} + 2>/dev/null | sort -u)"
 
-  if [[ "${found_id}" != "${expected_id}" ]]
+  if [[ "${found_ids}" != "${expected_id}" ]]
   then
-    printf 'DMG pkg receipt id "%s" does not match expected "%s"; refusing update\n' \
-      "${found_id}" "${expected_id}" >&2
+    printf 'DMG pkg component receipts do not match exactly the cask receipt.\n' >&2
+    printf '  expected only: %s\n  found:\n%s\nRefusing update.\n' \
+      "${expected_id}" "${found_ids}" >&2
     exit 1
   fi
   printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s)\n' \
