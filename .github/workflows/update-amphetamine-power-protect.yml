@@ -48,6 +48,22 @@ jobs:
       - name: Validate cask
         run: brew style --cask drod3763/tap/amphetamine-power-protect && brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 
+      - name: Install / uninstall smoke test
+        # Style/audit never install the pkg, so they can't prove the privileged install
+        # actually works or that uninstall removes the sudoers grant. This cask installs a
+        # root-running, sudoers-writing pkg; exercise it end to end on the arm64 runner
+        # (which has passwordless sudo, so the notarized pkg installs headlessly) and assert
+        # the sudoers drop-in is created on install and gone after uninstall. Fails the PR if
+        # the pkg can't install or leaves privileged state behind.
+        env:
+          SUDOERS: /private/etc/sudoers.d/amphetamine_PowerProtect
+        run: |
+          brew install --cask drod3763/tap/amphetamine-power-protect
+          test -f "$SUDOERS" || { echo "sudoers drop-in was not installed at $SUDOERS"; exit 1; }
+          brew uninstall --cask drod3763/tap/amphetamine-power-protect
+          test ! -e "$SUDOERS" || { echo "sudoers drop-in survived uninstall at $SUDOERS"; exit 1; }
+          echo "install/uninstall verified: sudoers drop-in created then removed"
+
       - name: Read updated version
         id: read_version
         run: |

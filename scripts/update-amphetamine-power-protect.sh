@@ -207,20 +207,21 @@ then
     exit 1
   fi
 
-  # Pin the set of installed payload PATHS (from the BOM), not their contents. `uninstall
-  # pkgutil:` already removes every BOM path, but a new privileged path — a LaunchDaemon, an
-  # extra sudoers drop-in — is a behavior change that warrants human review and possibly new
-  # cask cleanup. Freezing the path set refuses such structural changes while still allowing
-  # content updates to existing files (those only move the DMG sha256, which is pinned too).
-  expected_payload_digest="80820976c435c3a7fd4da8deee36b4c57f7672f447eec5c0205b973288090202"
-  payload_digest="$(find "${work_dir}/pkg" -name Bom -exec lsbom -s {} + |
+  # Pin the installed payload's PATHS plus their mode/owner/group (lsbom -p fMUG), not their
+  # contents. `uninstall pkgutil:` already removes every BOM path, but a new privileged path
+  # (a LaunchDaemon, an extra sudoers drop-in) or a permission/ownership change on an existing
+  # one — e.g. a world-writable or non-root sudoers file, which sudo would ignore or which is
+  # a vuln — is a privilege change that warrants human review. Freezing path+metadata refuses
+  # those while still allowing content updates to existing files (pinned by the DMG sha256).
+  expected_payload_digest="46f288ec0f92016a98da6031662d305eb909dce8e6a9d692ae2802fbcf6fae22"
+  payload_digest="$(find "${work_dir}/pkg" -name Bom -exec lsbom -p fMUG {} + |
     sort -u | shasum -a 256 | cut -d' ' -f1)"
   if [[ "${payload_digest}" != "${expected_payload_digest}" ]]
   then
-    printf 'Installer payload paths changed (digest %s, expected %s).\n' \
+    printf 'Installer payload paths or file metadata changed (digest %s, expected %s).\n' \
       "${payload_digest}" "${expected_payload_digest}" >&2
-    printf 'A new/removed installed path (e.g. a LaunchDaemon or sudoers drop-in) needs human\n' >&2
-    printf 'review and matching cask uninstall handling, then update expected_payload_digest.\n' >&2
+    printf 'A new/removed path or a mode/owner change on a privileged file (e.g. the sudoers\n' >&2
+    printf 'drop-in) needs human review, then update expected_payload_digest. Refusing update.\n' >&2
     exit 1
   fi
 
