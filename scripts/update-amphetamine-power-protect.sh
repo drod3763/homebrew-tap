@@ -171,7 +171,9 @@ then
     exit 1
   fi
 
-  pkgutil --expand "${mount_point}/${expected_pkg}" "${work_dir}/pkg"
+  # --expand-full also extracts the payload (not just the BOM/scripts) so the privileged
+  # sudoers file's contents can be pinned below.
+  pkgutil --expand-full "${mount_point}/${expected_pkg}" "${work_dir}/pkg"
   # Enumerate ALL component receipts and require the set to be exactly the one the cask
   # uninstalls. Matching just the first id (head -1) would let a future multi-component
   # product pkg pass while Homebrew installs extra components the cask never removes —
@@ -222,7 +224,28 @@ then
     exit 1
   fi
 
-  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s, scripts+paths pinned)\n' \
+  # Pin the CONTENTS of the privileged sudoers grant specifically. The path set (above) can't
+  # see a rule that widens NOPASSWD scope within the same file, and the user .scpt's contents
+  # may legitimately change — but any change to a passwordless-sudo grant is a privilege-scope
+  # change that must be human-reviewed, not accepted as an opaque sha256 bump.
+  expected_sudoers_digest="ec97dfc137afb5278e01a069f96bf8ecc3862250f07fc0d00b0d9a330a3c5e93"
+  sudoers_file="$(find "${work_dir}/pkg" -path '*/sudoers.d/amphetamine_PowerProtect' -type f | head -1)"
+  if [[ -z "${sudoers_file}" ]]
+  then
+    printf 'sudoers drop-in not found in the expanded payload; refusing update\n' >&2
+    exit 1
+  fi
+  sudoers_digest="$(shasum -a 256 "${sudoers_file}" | cut -d' ' -f1)"
+  if [[ "${sudoers_digest}" != "${expected_sudoers_digest}" ]]
+  then
+    printf 'sudoers grant contents changed (digest %s, expected %s).\n' \
+      "${sudoers_digest}" "${expected_sudoers_digest}" >&2
+    printf 'Review the new NOPASSWD rule for scope changes, then update expected_sudoers_digest.\n' >&2
+    printf 'Refusing update.\n' >&2
+    exit 1
+  fi
+
+  printf 'Verified DMG ships "%s" (receipt %s, notarized, Developer ID %s; scripts, paths & sudoers pinned)\n' \
     "${expected_pkg}" "${expected_id}" "${expected_team_id}"
 elif [[ "${AMPHETAMINE_PP_ALLOW_UNVERIFIED:-}" == "1" ]]
 then
