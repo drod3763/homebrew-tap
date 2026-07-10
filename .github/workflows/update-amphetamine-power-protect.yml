@@ -20,7 +20,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up Homebrew
         # Pinned to a full commit SHA (not the mutable @main branch): this job holds a
@@ -55,7 +55,10 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
+        # Pinned to a full commit SHA (not the mutable @v7 tag): this third-party action
+        # runs with the job's write-capable GITHUB_TOKEN, so a retagged/compromised release
+        # must not execute here. Bump deliberately when updating the action.
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
           branch: update-amphetamine-power-protect-${{ steps.read_version.outputs.version }}
           title: "amphetamine-power-protect ${{ steps.read_version.outputs.version }}"
