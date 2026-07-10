@@ -12,7 +12,9 @@ on:
 
 jobs:
   update:
-    runs-on: ubuntu-22.04
+    # macOS runner so the updater can mount the DMG and verify the pkg/receipt contract
+    # (hdiutil/pkgutil) before opening a PR — a Linux runner cannot mount an Apple DMG.
+    runs-on: macos-14
     permissions:
       contents: write
       pull-requests: write

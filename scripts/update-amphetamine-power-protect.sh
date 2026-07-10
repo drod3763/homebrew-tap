@@ -68,15 +68,73 @@ fi
 version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.${BASH_REMATCH[4]}${BASH_REMATCH[5]}${BASH_REMATCH[6]}"
 url="https://raw.githubusercontent.com/${owner}/${repo}/${commit}/${dmg_path_encoded}"
 
+# Download once to a temp file so the same bytes are both hashed and contract-verified.
+work_dir="$(mktemp -d)"
+mount_point=""
+cleanup() {
+  if [[ -n "${mount_point}" && -d "${mount_point}" ]]
+  then
+    hdiutil detach "${mount_point}" >/dev/null 2>&1 || true
+  fi
+  rm -rf "${work_dir}"
+}
+trap cleanup EXIT
+
+dmg_file="${work_dir}/installer.dmg"
+curl -fL "${url}" -o "${dmg_file}"
+
 if command -v shasum >/dev/null 2>&1
 then
-  sha256="$(curl -fL "${url}" | shasum -a 256 | cut -d' ' -f1)"
+  sha256="$(shasum -a 256 "${dmg_file}" | cut -d' ' -f1)"
 elif command -v sha256sum >/dev/null 2>&1
 then
-  sha256="$(curl -fL "${url}" | sha256sum | cut -d' ' -f1)"
+  sha256="$(sha256sum "${dmg_file}" | cut -d' ' -f1)"
 else
   printf 'Need shasum or sha256sum in PATH\n' >&2
   exit 1
+fi
+
+# Verify the DMG still ships the exact pkg + receipt id the cask hardcodes in its `pkg` and
+# `uninstall pkgutil:` stanzas. Without this, a scheduled update would accept any future
+# upstream DMG that merely downloads — style/audit never mount or install it — and could
+# auto-open a passing PR that installs the wrong package or strands privileged files on
+# uninstall. Requires macOS (hdiutil/pkgutil); elsewhere it warns and skips (fail-open only
+# off-platform, where mounting an Apple DMG isn't possible).
+expected_pkg="$(sed -n 's/^[[:space:]]*pkg "\(.*\)"[[:space:]]*$/\1/p' "${cask_path}" | head -1)"
+expected_id="$(sed -n 's/.*pkgutil: "\([^"]*\)".*/\1/p' "${cask_path}" | head -1)"
+
+if [[ -z "${expected_pkg}" || -z "${expected_id}" ]]
+then
+  printf 'Could not read expected pkg name / receipt id from %s\n' "${cask_path}" >&2
+  exit 1
+fi
+
+if command -v hdiutil >/dev/null 2>&1 && command -v pkgutil >/dev/null 2>&1
+then
+  mount_point="${work_dir}/mnt"
+  mkdir -p "${mount_point}"
+  hdiutil attach -readonly -nobrowse -mountpoint "${mount_point}" "${dmg_file}" >/dev/null
+
+  if [[ ! -f "${mount_point}/${expected_pkg}" ]]
+  then
+    printf 'DMG does not contain expected pkg "%s" — upstream layout changed; refusing update\n' \
+      "${expected_pkg}" >&2
+    exit 1
+  fi
+
+  pkgutil --expand "${mount_point}/${expected_pkg}" "${work_dir}/pkg"
+  found_id="$(find "${work_dir}/pkg" -name PackageInfo -exec \
+    sed -n 's/.*identifier="\([^"]*\)".*/\1/p' {} + 2>/dev/null | head -1)"
+
+  if [[ "${found_id}" != "${expected_id}" ]]
+  then
+    printf 'DMG pkg receipt id "%s" does not match expected "%s"; refusing update\n' \
+      "${found_id}" "${expected_id}" >&2
+    exit 1
+  fi
+  printf 'Verified DMG ships "%s" with receipt %s\n' "${expected_pkg}" "${expected_id}"
+else
+  printf 'WARNING: hdiutil/pkgutil unavailable (non-macOS); skipped pkg contract verification\n' >&2
 fi
 
 # The cask URL interpolates version.after_comma, so only the version + sha256 lines change.
