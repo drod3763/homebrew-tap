@@ -11,42 +11,35 @@ on:
     - cron: "0 9 * * 1"  # weekly Monday at 09:00 UTC
 
 jobs:
-  update:
+  # All untrusted work — downloading, mounting, expanding, and installing an
+  # upstream-controlled DMG/pkg — runs here with NO write-capable token, on its own runner.
+  # It emits the validated cask as an artifact. Even if DMG parsing or the privileged
+  # installer achieved code execution, this job holds no repo-write credentials to steal.
+  build:
     # macOS runner so the updater can mount the DMG and verify the pkg/receipt contract
-    # (hdiutil/pkgutil) before opening a PR — a Linux runner cannot mount an Apple DMG.
+    # (hdiutil/pkgutil) — a Linux runner cannot mount an Apple DMG.
     runs-on: macos-14
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # Don't persist the write-capable job token in .git/config: this workspace parses
-          # an upstream-controlled DMG (hdiutil/pkgutil), so a parser exploit must not be able
-          # to recover repo-write credentials from git config. Nothing here pushes from the
-          # workspace — create-pull-request below authenticates with its own token.
           persist-credentials: false
 
       - name: Set up Homebrew
-        # Pinned to a full commit SHA (not the mutable @main branch): this job holds a
-        # write-capable GITHUB_TOKEN, so an unexpected change on that external branch must
-        # not run here. Bump deliberately when updating the action.
+        # Pinned to a full commit SHA (not the mutable @main branch). Bump deliberately.
         uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update cask
         # Pass inputs through env, never interpolate ${{ }} into the shell body: GitHub
-        # evaluates expressions before the shell parses the script, so a crafted commit
-        # input could otherwise break quoting and run arbitrary commands. The script's own
-        # 40-hex SHA validation then rejects anything malformed.
+        # evaluates expressions before the shell parses the script, so a crafted commit input
+        # could otherwise break quoting and run arbitrary commands. The script's own 40-hex
+        # SHA validation then rejects anything malformed. The commit lookup runs unauthenticated
+        # (no token in this job at all) — fine for one request per run.
         env:
-          # Deliberately NOT exposing GITHUB_TOKEN here: this step downloads and parses an
-          # upstream-controlled DMG (hdiutil/pkgutil), so a parser exploit must not be able to
-          # exfiltrate a write-capable repo token from the step environment. The single GitHub
-          # API call (commit lookup) runs unauthenticated — fine for one request per run — and
-          # the create-pull-request step below still receives the token in its own environment.
           COMMIT: ${{ inputs.commit }}
         run: |
           if [ -n "$COMMIT" ]; then
@@ -59,12 +52,10 @@ jobs:
         run: brew style --cask drod3763/tap/amphetamine-power-protect && brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 
       - name: Install / uninstall smoke test
-        # Style/audit never install the pkg, so they can't prove the privileged install
-        # actually works or that uninstall removes the sudoers grant. This cask installs a
-        # root-running, sudoers-writing pkg; exercise it end to end on the arm64 runner
-        # (which has passwordless sudo, so the notarized pkg installs headlessly) and assert
-        # the sudoers drop-in is created on install and gone after uninstall. Fails the PR if
-        # the pkg can't install or leaves privileged state behind.
+        # Style/audit never install the pkg, so they can't prove the privileged install works
+        # or that uninstall removes the sudoers grant. Exercise it end to end on the arm64
+        # runner (passwordless sudo installs the notarized pkg headlessly) and assert the
+        # sudoers drop-in is created on install and gone after uninstall.
         env:
           SUDOERS: /private/etc/sudoers.d/amphetamine_PowerProtect
         run: |
@@ -74,16 +65,50 @@ jobs:
           test ! -e "$SUDOERS" || { echo "sudoers drop-in survived uninstall at $SUDOERS"; exit 1; }
           echo "install/uninstall verified: sudoers drop-in created then removed"
 
+      - name: Upload validated cask
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: amphetamine-power-protect-cask
+          path: Casks/amphetamine-power-protect.rb
+          if-no-files-found: error
+
+  # The write token lives ONLY here, on a fresh runner that never touched the DMG/pkg. It
+  # commits the exact cask the build job validated — no re-download, no re-run of the
+  # updater — so untrusted binary processing and write credentials never share a runner.
+  open-pr:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Download validated cask
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: amphetamine-power-protect-cask
+          path: Casks
+
       - name: Read updated version
         id: read_version
         run: |
-          VERSION="$(ruby -e 'content = File.read("Casks/amphetamine-power-protect.rb"); puts content[/version "([^"]+)"/, 1]')"
+          # Plain shell (this job sets up no Ruby/Homebrew). Use the date before the comma —
+          # version.csv.first — as the human-facing PR version; the commit after the comma is
+          # a URL pin, not something to put in a branch name.
+          VERSION="$(sed -n 's/^[[:space:]]*version "\([^",]*\),.*/\1/p' Casks/amphetamine-power-protect.rb | head -1)"
+          if [ -z "$VERSION" ]; then
+            echo "Could not read version from Casks/amphetamine-power-protect.rb" >&2
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create pull request
-        # Pinned to a full commit SHA (not the mutable @v7 tag): this third-party action
-        # runs with the job's write-capable GITHUB_TOKEN, so a retagged/compromised release
-        # must not execute here. Bump deliberately when updating the action.
+        # Pinned to a full commit SHA (not the mutable @v7 tag): this third-party action runs
+        # with the job's write-capable GITHUB_TOKEN. Bump deliberately.
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
           branch: update-amphetamine-power-protect-${{ steps.read_version.outputs.version }}
@@ -95,3 +120,4 @@ jobs:
             - repins the DMG URL to the latest commit touching the installer
             - updates the date-based version
             - refreshes SHA256 value
+            - validated (style, audit, install/uninstall) in the read-only `build` job
