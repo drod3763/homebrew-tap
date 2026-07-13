@@ -7,6 +7,17 @@ name: test-amphetamine-power-protect
 # pins) plus style/audit. That catches a broken pkg path / receipt id / uninstall stanza, or a
 # DMG whose privileged scripts/sudoers changed, before it can reach main.
 on:
+  # `push` as well as `pull_request`: GitHub evaluates pull_request workflows from the BASE
+  # branch, so this file — added in the same branch as the cask — would not run on the PR
+  # that introduces it, leaving the first merge of a root-running, sudoers-writing pkg
+  # ungated. A push-triggered run executes from this branch's copy, so the full contract
+  # check gates this branch before merge (and validates main afterwards).
+  push:
+    paths:
+      - Casks/amphetamine-power-protect.rb
+      - .github/workflows/test-amphetamine-power-protect.yml
+      - scripts/update-amphetamine-power-protect.sh
+      - .github/workflows/update-amphetamine-power-protect.yml
   pull_request:
     paths:
       - Casks/amphetamine-power-protect.rb
