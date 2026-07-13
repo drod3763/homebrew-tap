@@ -143,7 +143,24 @@ jobs:
               exit 1
             fi
           done
-          echo "Cask diff is confined to the version/sha256 values — safe to publish."
+          # Enforce version monotonicity independently of the (untrusted-input) build job: the
+          # new date-version must be strictly greater than the current one. This closes the one
+          # residual angle of a compromised build picking installer bytes — a downgrade to an
+          # older (still legitimate, x74353-signed) DMG commit — without this job having to
+          # parse the DMG itself. The url host/repo line is already covered by the gate, so a
+          # bump can't redirect off the upstream repo.
+          newv="$(printf '%s\n' "$changed" | sed -n 's/^+  version "\([^",]*\),.*/\1/p' | head -1)"
+          oldv="$(printf '%s\n' "$changed" | sed -n 's/^-  version "\([^",]*\),.*/\1/p' | head -1)"
+          if [ -z "$newv" ] || [ -z "$oldv" ]; then
+            echo "Could not parse old/new version from the diff — refusing." >&2
+            exit 1
+          fi
+          highest="$(printf '%s\n%s\n' "$oldv" "$newv" | sort -V | tail -1)"
+          if [ "$newv" = "$oldv" ] || [ "$highest" != "$newv" ]; then
+            echo "New version $newv is not greater than current $oldv — refusing (downgrade)." >&2
+            exit 1
+          fi
+          echo "Cask diff is confined to the version/sha256 values and the version increases — safe to publish."
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Read updated version

@@ -11,6 +11,10 @@ on:
     paths:
       - Casks/amphetamine-power-protect.rb
       - .github/workflows/test-amphetamine-power-protect.yml
+      # Also run when the updater or its workflow changes — those are the security-critical
+      # pieces this contract check exercises, so a PR touching only them must not skip it.
+      - scripts/update-amphetamine-power-protect.sh
+      - .github/workflows/update-amphetamine-power-protect.yml
 
 # Read-only: this job only inspects an upstream pkg and needs no repo write access.
 permissions:
