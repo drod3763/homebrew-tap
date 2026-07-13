@@ -36,4 +36,14 @@ cask "amphetamine-power-protect" do
             delete:  "/private/etc/sudoers.d/amphetamine_PowerProtect"
 
   zap trash: "~/Library/Application Scripts/com.if.Amphetamine/powerProtect.scpt"
+
+  # Power Protect is a companion to the Amphetamine app, and the installer's own preflight
+  # refuses to run unless Amphetamine is present (the pkg aborts with an opaque volume error
+  # otherwise). Amphetamine ships only on the Mac App Store, so it can't be a `depends_on`;
+  # surface the prerequisite here so users install it first instead of hitting that failure.
+  caveats <<~EOS
+    Power Protect requires the Amphetamine app. Install it from the Mac App Store first —
+    the installer refuses to run without it:
+      https://apps.apple.com/app/amphetamine/id937984704
+  EOS
 end
