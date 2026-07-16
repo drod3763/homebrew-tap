@@ -130,8 +130,8 @@ fi
 # hardcodes in its `pkg` / `uninstall pkgutil:` stanzas (secondary guards). Without this a
 # scheduled update would accept any future upstream DMG that merely downloads — style/audit
 # never mount or install it — and could auto-open a passing PR that installs a tampered
-# root-running package. Requires macOS (hdiutil/pkgutil); elsewhere it warns and skips
-# (fail-open only off-platform, where mounting an Apple DMG isn't possible).
+# root-running package. Requires macOS (hdiutil/pkgutil); off-platform it fails closed and
+# refuses to write unless AMPHETAMINE_PP_ALLOW_UNVERIFIED=1 is set (see the else branch below).
 expected_pkg="$(sed -n 's/^[[:space:]]*pkg "\(.*\)"[[:space:]]*$/\1/p' "${cask_path}" | head -1)"
 # Receipt id lives in the `pkgutil:` stanza, which is an anchored Regexp (%r{\A...\z}); grab
 # the com.if.pkg.* token whether the dots are escaped (regexp) or bare (plain string), then

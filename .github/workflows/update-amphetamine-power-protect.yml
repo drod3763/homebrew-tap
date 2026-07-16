@@ -192,4 +192,4 @@ jobs:
             - repins the DMG URL to the latest commit touching the installer
             - updates the date-based version
             - refreshes SHA256 value
-            - validated (style, audit, install/uninstall) in the read-only `build` job
+            - validated (style, audit, and full pkg contract verification) in the read-only `build` job
