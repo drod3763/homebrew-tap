@@ -33,10 +33,12 @@ gh_api_get() {
 
 if [[ $# -eq 1 ]]
 then
-  commit="$1"
+  # Normalize to lowercase (GitHub accepts uppercase SHAs; users paste them). tr keeps this
+  # working on macOS Bash 3.2, which lacks the ${var,,} lowercasing operator.
+  commit="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
   if [[ ! "${commit}" =~ ^[0-9a-f]{40}$ ]]
   then
-    printf 'commit sha must be 40 lowercase hex chars\n' >&2
+    printf 'commit sha must be 40 hex chars\n' >&2
     exit 1
   fi
   commit_json="$(gh_api_get "https://api.github.com/repos/${owner}/${repo}/commits/${commit}")"
