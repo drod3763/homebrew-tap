@@ -102,7 +102,8 @@ then
 fi
 
 # Download once to a temp file so the same bytes are both hashed and contract-verified.
-work_dir="$(mktemp -d)"
+# Explicit template — portable across GNU and BSD (macOS) mktemp, matching update-herdr-mx.sh.
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/amphetamine-pp.XXXXXX")"
 mount_point=""
 cleanup() {
   if [[ -n "${mount_point}" && -d "${mount_point}" ]]
