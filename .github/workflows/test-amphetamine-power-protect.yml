@@ -90,15 +90,25 @@ jobs:
             exit 1
           fi
           base="${GITHUB_BASE_REF:-main}"
-          git fetch --depth=1 origin "$base" >/dev/null 2>&1 || true
+          # Fail CLOSED if the base branch can't be materialized: a fetch error or missing
+          # remote-tracking ref must NOT silently fall through to the PR-controlled verifier.
+          if ! git fetch --depth=1 origin "$base" >/dev/null 2>&1 \
+             || ! git rev-parse --verify --quiet "origin/$base" >/dev/null
+          then
+            echo "Could not fetch base branch '$base' to source a trusted verifier — refusing." >&2
+            exit 1
+          fi
           if git cat-file -e "origin/$base:scripts/update-amphetamine-power-protect.sh" 2>/dev/null
           then
             # Overwrite the PR's copy in place (same path, so the script's repo-root resolution
-            # still finds Casks/) with the trusted base copy before running it.
+            # still finds Casks/) with the trusted base copy before running it. Only reached
+            # when the base ref is confirmed present, so this is never a fail-open path.
             git checkout "origin/$base" -- scripts/update-amphetamine-power-protect.sh
             echo "Verifier restored from base branch ($base) — PR edits to it cannot weaken this gate."
           else
-            echo "NOTE: updater absent on base ($base) — this is the introducing PR; using the PR copy (human-review gated)."
+            # Base ref is confirmed present but the script genuinely doesn't exist on it: this
+            # is the PR that first introduces the script, necessarily gated by human review.
+            echo "NOTE: verifier absent on confirmed base ($base) — introducing PR; using the PR copy (human-review gated)."
           fi
           scripts/update-amphetamine-power-protect.sh "$commit"
           if ! git diff --quiet -- Casks/amphetamine-power-protect.rb; then

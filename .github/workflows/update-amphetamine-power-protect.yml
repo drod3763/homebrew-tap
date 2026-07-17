@@ -78,11 +78,65 @@ jobs:
           path: Casks/amphetamine-power-protect.rb
           if-no-files-found: error
 
-  # The write token lives ONLY here, on a fresh runner that never touched the DMG/pkg. It
-  # commits the exact cask the build job validated — no re-download, no re-run of the
-  # updater — so untrusted binary processing and write credentials never share a runner.
-  open-pr:
+  # Independently re-verify the build artifact on a FRESH read-only macOS runner, using the
+  # repository's trusted updater (not anything the build job emitted). If the build runner was
+  # compromised and produced a cask that skipped or faked the pkg contract, the trusted updater
+  # re-run here re-checks notarization, Developer ID, receipt set, script/payload/sudoers/scpt
+  # digests for the artifact's pinned commit and regenerates the cask — a mismatch (or any
+  # failed pin) fails this job, so open-pr never publishes an artifact whose full contract
+  # wasn't accepted by a trusted gate. (open-pr itself must not parse the DMG — it holds the
+  # write token — so this separate job carries that check.)
+  reverify:
     needs: build
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download the build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: amphetamine-power-protect-cask
+          path: Casks
+
+      - name: Re-run the full contract with the trusted updater
+        env:
+          # Read-only token (job is contents: read) to authenticate the updater's API lookup.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          commit="$(sed -n 's/^[[:space:]]*version "[^,]*,\([0-9a-f]\{40\}\)".*/\1/p' \
+            Casks/amphetamine-power-protect.rb | head -1)"
+          if [ -z "$commit" ]; then
+            echo "Could not read the pinned commit from the artifact cask." >&2
+            exit 1
+          fi
+          # The checked-out updater is the repository's trusted copy (this workflow runs on
+          # dispatch/schedule, not from a PR). It re-verifies the DMG at the pinned commit
+          # against every pin and regenerates the cask; a legit artifact reproduces byte-for-
+          # byte, a compromised one fails a pin or diverges here.
+          scripts/update-amphetamine-power-protect.sh "$commit"
+          if ! git diff --quiet -- Casks/amphetamine-power-protect.rb; then
+            echo "Build artifact does not match the trusted re-verification for commit $commit:" >&2
+            git --no-pager diff -- Casks/amphetamine-power-protect.rb >&2
+            exit 1
+          fi
+          echo "Full pkg contract independently re-verified on a fresh runner."
+
+  # The write token lives ONLY here, on a fresh runner that never touched the DMG/pkg. It
+  # commits the exact cask the build job produced and the reverify job independently accepted —
+  # no re-download of the DMG, no untrusted parsing — so binary processing and write
+  # credentials never share a runner.
+  open-pr:
+    needs: reverify
     runs-on: ubuntu-24.04
     permissions:
       contents: write
