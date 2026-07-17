@@ -70,12 +70,14 @@ jobs:
         # version/sha or a DMG whose scripts/sudoers/receipts changed makes the updater fail or
         # produce a diff. This gives a hand-edited PR the same guarantees as an automated update.
         #
-        # Trust boundary: this runs the updater/verifier from the PR checkout, so a PR that
-        # edits scripts/update-amphetamine-power-protect.sh could also weaken the checks. That
-        # is unavoidable in a self-hosted verifier (running the base copy instead would reject
-        # every legitimate digest re-baseline, which lives in that same script). Changes to the
-        # updater/verifier are security-critical and gated by human review — the auto-update
-        # PRs never touch it, so for them this check is fully trustworthy.
+        # The verifier is run from the BASE branch, not the PR checkout, so a PR that weakens
+        # its own scripts/update-amphetamine-power-protect.sh (no-op the checks) can't weaken
+        # this gate — the trusted base copy is used instead. A PR that legitimately re-baselines
+        # the pinned digests (an upstream change to the installer's privileged scripts) will
+        # therefore fail this check against the old base digests, which is intended: such a
+        # privileged change must be human-reviewed, not auto-greenlit. The only fallback to the
+        # PR copy is the PR that first introduces the script (it doesn't exist on base yet),
+        # which is necessarily gated by human review.
         env:
           # Read-only token (job is permissions: contents:read) to authenticate the updater's
           # GitHub API commit lookup; unauthenticated calls 403 on the shared runner rate limit.
@@ -87,10 +89,21 @@ jobs:
             echo "Could not read the pinned commit from the cask version." >&2
             exit 1
           fi
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --depth=1 origin "$base" >/dev/null 2>&1 || true
+          if git cat-file -e "origin/$base:scripts/update-amphetamine-power-protect.sh" 2>/dev/null
+          then
+            # Overwrite the PR's copy in place (same path, so the script's repo-root resolution
+            # still finds Casks/) with the trusted base copy before running it.
+            git checkout "origin/$base" -- scripts/update-amphetamine-power-protect.sh
+            echo "Verifier restored from base branch ($base) — PR edits to it cannot weaken this gate."
+          else
+            echo "NOTE: updater absent on base ($base) — this is the introducing PR; using the PR copy (human-review gated)."
+          fi
           scripts/update-amphetamine-power-protect.sh "$commit"
           if ! git diff --quiet -- Casks/amphetamine-power-protect.rb; then
-            echo "Cask does not match the updater's verified output for pinned commit $commit:" >&2
+            echo "Cask does not match the verifier's output for pinned commit $commit:" >&2
             git --no-pager diff -- Casks/amphetamine-power-protect.rb >&2
             exit 1
           fi
-          echo "Pinned DMG passes the full contract and the cask matches the updater's output."
+          echo "Pinned DMG passes the full contract and the cask matches the verifier's output."
