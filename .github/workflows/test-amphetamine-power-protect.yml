@@ -132,7 +132,19 @@ jobs:
               printf '%s\n' "$illegal" >&2
               exit 1
             fi
-            echo "Cask differs from base only in version/sha256."
+            # Enforce version monotonicity vs base — the updater's own downgrade guard reads
+            # current_version from the (already-edited) PR cask, so it can't catch a PR that
+            # pins an OLDER but contract-valid DMG. Compare the base and PR versions here.
+            newv="$(printf '%s\n' "$changed" | sed -n 's/^+  version "\([^",]*\),.*/\1/p' | head -1)"
+            oldv="$(printf '%s\n' "$changed" | sed -n 's/^-  version "\([^",]*\),.*/\1/p' | head -1)"
+            if [ -n "$newv" ] && [ -n "$oldv" ]; then
+              highest="$(printf '%s\n%s\n' "$oldv" "$newv" | sort -V | tail -1)"
+              if [ "$newv" = "$oldv" ] || [ "$highest" != "$newv" ]; then
+                echo "PR version $newv is not greater than base $oldv — refusing (downgrade)." >&2
+                exit 1
+              fi
+            fi
+            echo "Cask differs from base only in version/sha256, and the version increases."
           else
             echo "NOTE: cask absent on base ($base) — introducing PR; whole cask is human-review gated."
           fi
