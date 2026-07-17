@@ -165,15 +165,34 @@ then
   # preserve while swapping the root-running payload; the signature it cannot forge. Fail
   # closed unless the installer is Apple-notarized AND signed by this Team ID.
   expected_team_id="U5SR49N3PT" # Developer ID Installer: William Gustafson
-  signature="$(pkgutil --check-signature "${mount_point}/${expected_pkg}" 2>&1)"
-  if ! printf '%s' "${signature}" | grep -q "trusted by the Apple notary service"
+
+  # Notarization is proven with spctl — the documented Gatekeeper assessment tool — not by
+  # grepping pkgutil for an undocumented notary string. `spctl -a -t install` assesses the
+  # pkg against the install policy and, for a notarized Developer ID installer, exits 0 and
+  # prints `source=Notarized Developer ID` plus an `origin=... (TEAMID)` line.
+  # `|| true` so a rejection (non-zero exit) doesn't trip `set -e`; the grep below is the
+  # real gate — `source=Notarized Developer ID` is printed only for an accepted, notarized
+  # Developer ID installer.
+  assessment="$(spctl -a -t install -vv "${mount_point}/${expected_pkg}" 2>&1 || true)"
+  if ! printf '%s' "${assessment}" | grep -q "source=Notarized Developer ID"
   then
-    printf 'pkg is not notarized by Apple; refusing update\n%s\n' "${signature}" >&2
+    printf 'pkg is not accepted as Apple-notarized by spctl; refusing update\n%s\n' \
+      "${assessment}" >&2
     exit 1
   fi
+  if ! printf '%s' "${assessment}" | grep -q "(${expected_team_id})"
+  then
+    printf 'pkg not notarized under expected Developer ID %s; refusing update\n%s\n' \
+      "${expected_team_id}" "${assessment}" >&2
+    exit 1
+  fi
+
+  # Secondary, defense-in-depth: confirm the Developer ID Team ID also appears in the pkg's
+  # signing certificate chain (documented `pkgutil --check-signature` cert output).
+  signature="$(pkgutil --check-signature "${mount_point}/${expected_pkg}" 2>&1)"
   if ! printf '%s' "${signature}" | grep -q "(${expected_team_id})"
   then
-    printf 'pkg not signed by expected Developer ID %s; refusing update\n%s\n' \
+    printf 'pkg signing cert chain does not include Team ID %s; refusing update\n%s\n' \
       "${expected_team_id}" "${signature}" >&2
     exit 1
   fi
