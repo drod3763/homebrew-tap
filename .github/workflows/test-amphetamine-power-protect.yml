@@ -113,6 +113,30 @@ jobs:
             # is the PR that first introduces the script, necessarily gated by human review.
             echo "NOTE: verifier absent on confirmed base ($base) — introducing PR; using the PR copy (human-review gated)."
           fi
+          # Confine the cask itself relative to the base branch: only version + sha256 may
+          # differ. The updater below only rewrites those two lines, so on its own the
+          # reproduce-and-diff check would NOT catch a PR that weakened other stanzas (the
+          # arm64 gate, the uninstall/sudoers delete, verified, pkg). Diff the PR cask against
+          # base and reject any non-version/sha change — the same guard the open-pr job applies.
+          # (Skipped only for the introducing PR, where base has no cask; human-review gated.)
+          if git cat-file -e "origin/$base:Casks/amphetamine-power-protect.rb" 2>/dev/null
+          then
+            git show "origin/$base:Casks/amphetamine-power-protect.rb" > /tmp/base-cask.rb
+            d="$(git --no-pager diff --no-index -- /tmp/base-cask.rb Casks/amphetamine-power-protect.rb || true)"
+            changed="$(printf '%s\n' "$d" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
+            illegal="$(printf '%s\n' "$changed" \
+              | grep -vE '^[+-]  version "[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{6},[0-9a-f]{40}"$' \
+              | grep -vE '^[+-]  sha256 "[0-9a-f]{64}"$' || true)"
+            if [ -n "$illegal" ]; then
+              echo "PR changes cask stanzas other than version/sha256 — refusing:" >&2
+              printf '%s\n' "$illegal" >&2
+              exit 1
+            fi
+            echo "Cask differs from base only in version/sha256."
+          else
+            echo "NOTE: cask absent on base ($base) — introducing PR; whole cask is human-review gated."
+          fi
+
           scripts/update-amphetamine-power-protect.sh "$commit"
           if ! git diff --quiet -- Casks/amphetamine-power-protect.rb; then
             echo "Cask does not match the verifier's output for pinned commit $commit:" >&2
