@@ -177,6 +177,32 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Independently verify the pinned DMG hash
+        if: steps.gate.outputs.changed == 'true'
+        # Re-derive the pinned commit + sha256 straight from the cask and confirm the sha256
+        # is the real hash of the DMG at that URL — WITHOUT parsing the DMG (curl + sha only,
+        # no hdiutil), so this stays safe in the write-token job. The build job produced this
+        # artifact after mounting an untrusted DMG; if that parsing were exploited it could
+        # commit a cask whose sha256 doesn't match the bytes at the pinned URL. Recomputing
+        # the hash here — in the job that holds the write token but never touches the DMG —
+        # refuses any forged artifact. Combined with the diff-gate (which pins the url
+        # host/repo and the version format) this confines a compromised build to a real,
+        # hash-matching DMG at an actual x74353 commit with a strictly increasing version.
+        run: |
+          commit="$(sed -n 's/^[[:space:]]*version "[^,]*,\([0-9a-f]\{40\}\)".*/\1/p' Casks/amphetamine-power-protect.rb | head -1)"
+          want="$(sed -n 's/^[[:space:]]*sha256 "\([0-9a-f]\{64\}\)".*/\1/p' Casks/amphetamine-power-protect.rb | head -1)"
+          if [ -z "$commit" ] || [ -z "$want" ]; then
+            echo "Could not read pinned commit / sha256 from the cask." >&2
+            exit 1
+          fi
+          url="https://raw.githubusercontent.com/x74353/Amphetamine-Power-Protect/${commit}/DMG/Power%20Protect%20for%20Amphetamine.dmg"
+          got="$(curl -fsSL "$url" | sha256sum | cut -d' ' -f1)"
+          if [ "$got" != "$want" ]; then
+            echo "Pinned DMG hash mismatch: cask declares $want but $url hashes to $got — refusing." >&2
+            exit 1
+          fi
+          echo "Pinned DMG hash independently verified ($got)."
+
       - name: Create pull request
         # Pinned to a full commit SHA (not the mutable @v7 tag): this third-party action runs
         # with the job's write-capable GITHUB_TOKEN. Bump deliberately.
