@@ -92,7 +92,10 @@ jobs:
           base="${GITHUB_BASE_REF:-main}"
           # Fail CLOSED if the base branch can't be materialized: a fetch error or missing
           # remote-tracking ref must NOT silently fall through to the PR-controlled verifier.
-          if ! git fetch --depth=1 origin "$base" >/dev/null 2>&1 \
+          # Use an explicit destination refspec — a bare `git fetch origin $base` only updates
+          # FETCH_HEAD, not refs/remotes/origin/$base, so origin/$base may not resolve otherwise
+          # (actions/checkout fetches only the triggering ref at depth 1).
+          if ! git fetch --depth=1 origin "+refs/heads/$base:refs/remotes/origin/$base" >/dev/null 2>&1 \
              || ! git rev-parse --verify --quiet "origin/$base" >/dev/null
           then
             echo "Could not fetch base branch '$base' to source a trusted verifier — refusing." >&2
