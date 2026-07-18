@@ -1,0 +1,158 @@
+name: test-amphetamine-power-protect
+
+# Gate every PR that touches the privileged, sudoers-writing cask. A real `brew install`
+# can't run in CI — the pkg's own installation-check refuses to install unless Amphetamine.app
+# is present — so instead of installing, this verifies the pinned DMG against the full updater
+# contract (notarization, Developer ID, receipt set, installer script + payload + sudoers
+# pins) plus style/audit. That catches a broken pkg path / receipt id / uninstall stanza, or a
+# DMG whose privileged scripts/sudoers changed, before it can reach main.
+on:
+  # `push` as well as `pull_request`: GitHub evaluates pull_request workflows from the BASE
+  # branch, so this file — added in the same branch as the cask — would not run on the PR
+  # that introduces it, leaving the first merge of a root-running, sudoers-writing pkg
+  # ungated. A push-triggered run executes from this branch's copy, so the full contract
+  # check gates this branch before merge (and validates main afterwards).
+  push:
+    paths:
+      - Casks/amphetamine-power-protect.rb
+      - .github/workflows/test-amphetamine-power-protect.yml
+      - scripts/update-amphetamine-power-protect.sh
+      - .github/workflows/update-amphetamine-power-protect.yml
+  pull_request:
+    paths:
+      - Casks/amphetamine-power-protect.rb
+      - .github/workflows/test-amphetamine-power-protect.yml
+      # Also run when the updater or its workflow changes — those are the security-critical
+      # pieces this contract check exercises, so a PR touching only them must not skip it.
+      - scripts/update-amphetamine-power-protect.sh
+      - .github/workflows/update-amphetamine-power-protect.yml
+
+# Read-only: this job only inspects an upstream pkg and needs no repo write access.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    # macOS runner: the contract verification mounts and expands the DMG (hdiutil/pkgutil),
+    # which a Linux runner cannot do.
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Link the checkout as the tap
+        # brew style/audit require a tap-qualified name (path-based audit is disabled), so
+        # symlink this PR's checkout into Homebrew's taps dir. The brew commands below then
+        # resolve drod3763/tap/... to exactly the code under review.
+        run: |
+          tap_dir="$(brew --repository)/Library/Taps/drod3763/homebrew-tap"
+          rm -rf "$tap_dir"                       # replace any remote-tapped copy the runner set up
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
+
+      - name: Style and audit
+        run: |
+          brew style --cask drod3763/tap/amphetamine-power-protect
+          brew audit --cask --strict drod3763/tap/amphetamine-power-protect
+
+      - name: Verify the pinned DMG against the full contract
+        # style/audit don't check the updater's deep guarantees (notarization, Developer ID,
+        # receipt set, installer script + payload + sudoers pins). Re-run the updater for the
+        # commit this cask pins: it re-verifies that DMG against every pin and regenerates the
+        # cask. A legitimate, fully-verified pin reproduces the cask byte-for-byte; a tampered
+        # version/sha or a DMG whose scripts/sudoers/receipts changed makes the updater fail or
+        # produce a diff. This gives a hand-edited PR the same guarantees as an automated update.
+        #
+        # The verifier is run from the BASE branch, not the PR checkout, so a PR that weakens
+        # its own scripts/update-amphetamine-power-protect.sh (no-op the checks) can't weaken
+        # this gate — the trusted base copy is used instead. A PR that legitimately re-baselines
+        # the pinned digests (an upstream change to the installer's privileged scripts) will
+        # therefore fail this check against the old base digests, which is intended: such a
+        # privileged change must be human-reviewed, not auto-greenlit. The only fallback to the
+        # PR copy is the PR that first introduces the script (it doesn't exist on base yet),
+        # which is necessarily gated by human review.
+        env:
+          # Read-only token (job is permissions: contents:read) to authenticate the updater's
+          # GitHub API commit lookup; unauthenticated calls 403 on the shared runner rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          commit="$(sed -n 's/^[[:space:]]*version "[^,]*,\([0-9a-f]\{40\}\)".*/\1/p' \
+            Casks/amphetamine-power-protect.rb | head -1)"
+          if [ -z "$commit" ]; then
+            echo "Could not read the pinned commit from the cask version." >&2
+            exit 1
+          fi
+          base="${GITHUB_BASE_REF:-main}"
+          # Fail CLOSED if the base branch can't be materialized: a fetch error or missing
+          # remote-tracking ref must NOT silently fall through to the PR-controlled verifier.
+          # Use an explicit destination refspec — a bare `git fetch origin $base` only updates
+          # FETCH_HEAD, not refs/remotes/origin/$base, so origin/$base may not resolve otherwise
+          # (actions/checkout fetches only the triggering ref at depth 1).
+          if ! git fetch --depth=1 origin "+refs/heads/$base:refs/remotes/origin/$base" >/dev/null 2>&1 \
+             || ! git rev-parse --verify --quiet "origin/$base" >/dev/null
+          then
+            echo "Could not fetch base branch '$base' to source a trusted verifier — refusing." >&2
+            exit 1
+          fi
+          if git cat-file -e "origin/$base:scripts/update-amphetamine-power-protect.sh" 2>/dev/null
+          then
+            # Overwrite the PR's copy in place (same path, so the script's repo-root resolution
+            # still finds Casks/) with the trusted base copy before running it. Only reached
+            # when the base ref is confirmed present, so this is never a fail-open path.
+            git checkout "origin/$base" -- scripts/update-amphetamine-power-protect.sh
+            echo "Verifier restored from base branch ($base) — PR edits to it cannot weaken this gate."
+          else
+            # Base ref is confirmed present but the script genuinely doesn't exist on it: this
+            # is the PR that first introduces the script, necessarily gated by human review.
+            echo "NOTE: verifier absent on confirmed base ($base) — introducing PR; using the PR copy (human-review gated)."
+          fi
+          # Confine the cask itself relative to the base branch: only version + sha256 may
+          # differ. The updater below only rewrites those two lines, so on its own the
+          # reproduce-and-diff check would NOT catch a PR that weakened other stanzas (the
+          # arm64 gate, the uninstall/sudoers delete, verified, pkg). Diff the PR cask against
+          # base and reject any non-version/sha change — the same guard the open-pr job applies.
+          # (Skipped only for the introducing PR, where base has no cask; human-review gated.)
+          if git cat-file -e "origin/$base:Casks/amphetamine-power-protect.rb" 2>/dev/null
+          then
+            git show "origin/$base:Casks/amphetamine-power-protect.rb" > /tmp/base-cask.rb
+            d="$(git --no-pager diff --no-index -- /tmp/base-cask.rb Casks/amphetamine-power-protect.rb || true)"
+            changed="$(printf '%s\n' "$d" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
+            illegal="$(printf '%s\n' "$changed" \
+              | grep -vE '^[+-]  version "[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{6},[0-9a-f]{40}"$' \
+              | grep -vE '^[+-]  sha256 "[0-9a-f]{64}"$' || true)"
+            if [ -n "$illegal" ]; then
+              echo "PR changes cask stanzas other than version/sha256 — refusing:" >&2
+              printf '%s\n' "$illegal" >&2
+              exit 1
+            fi
+            # Enforce version monotonicity vs base — the updater's own downgrade guard reads
+            # current_version from the (already-edited) PR cask, so it can't catch a PR that
+            # pins an OLDER but contract-valid DMG. Compare the base and PR versions here.
+            newv="$(printf '%s\n' "$changed" | sed -n 's/^+  version "\([^",]*\),.*/\1/p' | head -1)"
+            oldv="$(printf '%s\n' "$changed" | sed -n 's/^-  version "\([^",]*\),.*/\1/p' | head -1)"
+            if [ -n "$newv" ] && [ -n "$oldv" ]; then
+              highest="$(printf '%s\n%s\n' "$oldv" "$newv" | sort -V | tail -1)"
+              if [ "$newv" = "$oldv" ] || [ "$highest" != "$newv" ]; then
+                echo "PR version $newv is not greater than base $oldv — refusing (downgrade)." >&2
+                exit 1
+              fi
+            fi
+            echo "Cask differs from base only in version/sha256, and the version increases."
+          else
+            echo "NOTE: cask absent on base ($base) — introducing PR; whole cask is human-review gated."
+          fi
+
+          scripts/update-amphetamine-power-protect.sh "$commit"
+          if ! git diff --quiet -- Casks/amphetamine-power-protect.rb; then
+            echo "Cask does not match the verifier's output for pinned commit $commit:" >&2
+            git --no-pager diff -- Casks/amphetamine-power-protect.rb >&2
+            exit 1
+          fi
+          echo "Pinned DMG passes the full contract and the cask matches the verifier's output."

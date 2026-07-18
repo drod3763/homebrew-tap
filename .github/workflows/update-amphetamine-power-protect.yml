@@ -1,0 +1,275 @@
+name: update-amphetamine-power-protect
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Optional commit SHA to pin (40 hex chars). Leave empty for the latest commit touching the DMG."
+        required: false
+        type: string
+  schedule:
+    - cron: "0 9 * * 1"  # weekly Monday at 09:00 UTC
+
+jobs:
+  # All untrusted work — downloading, mounting, expanding, and installing an
+  # upstream-controlled DMG/pkg — runs here with NO write-capable token, on its own runner.
+  # It emits the validated cask as an artifact. Even if DMG parsing or the privileged
+  # installer achieved code execution, this job holds no repo-write credentials to steal.
+  build:
+    # macOS runner so the updater can mount the DMG and verify the pkg/receipt contract
+    # (hdiutil/pkgutil) — a Linux runner cannot mount an Apple DMG.
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew
+        # Pinned to a full commit SHA (not the mutable @main branch). Bump deliberately.
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Link the checkout as the tap
+        # Tap-qualified brew commands (style/audit/install below) resolve through Homebrew's
+        # taps dir, not the workspace. Symlink this checkout in so they validate and install
+        # exactly the cask the updater just wrote here — not a remote or pre-tapped copy.
+        run: |
+          tap_dir="$(brew --repository)/Library/Taps/drod3763/homebrew-tap"
+          rm -rf "$tap_dir"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
+
+      - name: Update cask
+        # Pass inputs through env, never interpolate ${{ }} into the shell body: GitHub
+        # evaluates expressions before the shell parses the script, so a crafted commit input
+        # could otherwise break quoting and run arbitrary commands. The script's own 40-hex
+        # SHA validation then rejects anything malformed.
+        env:
+          # This job is permissions: contents:read, so GITHUB_TOKEN here is READ-ONLY. It
+          # authenticates the GitHub API commit lookup (unauthenticated calls hit the shared
+          # runner's 60/hr rate limit → 403) but cannot write to the repo or open PRs even if
+          # the DMG parser were exploited. The write-capable token lives only in the open-pr job.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ inputs.commit }}
+        run: |
+          if [ -n "$COMMIT" ]; then
+            scripts/update-amphetamine-power-protect.sh "$COMMIT"
+          else
+            scripts/update-amphetamine-power-protect.sh
+          fi
+
+      - name: Validate cask
+        run: brew style --cask drod3763/tap/amphetamine-power-protect && brew audit --cask --strict drod3763/tap/amphetamine-power-protect
+
+      # No `brew install` smoke test here: the pkg's installation-check refuses to install
+      # unless Amphetamine.app is present, so it can't run headlessly. The full pkg contract
+      # (notarization, Developer ID, receipts, scripts, payload, sudoers) is already verified
+      # inside the `Update cask` step, which mounts and expands the DMG.
+      - name: Upload validated cask
+        # Freeze the exact bytes that passed the updater's verification + style/audit as the
+        # artifact open-pr commits; open-pr's diff-gate then bounds it to version/sha changes.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: amphetamine-power-protect-cask
+          path: Casks/amphetamine-power-protect.rb
+          if-no-files-found: error
+
+  # Independently re-verify the build artifact on a FRESH read-only macOS runner, using the
+  # repository's trusted updater (not anything the build job emitted). If the build runner was
+  # compromised and produced a cask that skipped or faked the pkg contract, the trusted updater
+  # re-run here re-checks notarization, Developer ID, receipt set, script/payload/sudoers/scpt
+  # digests for the artifact's pinned commit and regenerates the cask — a mismatch (or any
+  # failed pin) fails this job, so open-pr never publishes an artifact whose full contract
+  # wasn't accepted by a trusted gate. (open-pr itself must not parse the DMG — it holds the
+  # write token — so this separate job carries that check.)
+  reverify:
+    needs: build
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download the build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: amphetamine-power-protect-cask
+          path: Casks
+
+      - name: Re-run the full contract with the trusted updater
+        env:
+          # Read-only token (job is contents: read) to authenticate the updater's API lookup.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          commit="$(sed -n 's/^[[:space:]]*version "[^,]*,\([0-9a-f]\{40\}\)".*/\1/p' \
+            Casks/amphetamine-power-protect.rb | head -1)"
+          if [ -z "$commit" ]; then
+            echo "Could not read the pinned commit from the artifact cask." >&2
+            exit 1
+          fi
+          # The checked-out updater is the repository's trusted copy (this workflow runs on
+          # dispatch/schedule, not from a PR). It re-verifies the DMG at the pinned commit
+          # against every pin and regenerates the cask; a legit artifact reproduces byte-for-
+          # byte, a compromised one fails a pin or diverges here.
+          scripts/update-amphetamine-power-protect.sh "$commit"
+          if ! git diff --quiet -- Casks/amphetamine-power-protect.rb; then
+            echo "Build artifact does not match the trusted re-verification for commit $commit:" >&2
+            git --no-pager diff -- Casks/amphetamine-power-protect.rb >&2
+            exit 1
+          fi
+          echo "Full pkg contract independently re-verified on a fresh runner."
+
+  # The write token lives ONLY here, on a fresh runner that never touched the DMG/pkg. It
+  # commits the exact cask the build job produced and the reverify job independently accepted —
+  # no re-download of the DMG, no untrusted parsing — so binary processing and write
+  # credentials never share a runner.
+  open-pr:
+    needs: reverify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Download validated cask
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: amphetamine-power-protect-cask
+          path: Casks
+
+      - name: Constrain the generated cask to version/sha256 changes
+        # The build job derives the cask by parsing an untrusted DMG (hdiutil/pkgutil), so a
+        # parser exploit there could inject arbitrary cask stanzas into the artifact this
+        # write-token job commits. Bound the blast radius: the only legitimate change a DMG
+        # bump makes is the `version` and `sha256` lines. Diff the downloaded artifact against
+        # the committed cask and refuse if anything else changed — a compromised build job can
+        # then only propose a human-reviewable version/sha bump, never new cask code. Note the
+        # `url` line (host/repo) is itself covered, so a bump can't redirect off x74353.
+        id: gate
+        run: |
+          diff="$(git diff -- Casks/amphetamine-power-protect.rb)"
+          if [ -z "$diff" ]; then
+            # No upstream change is the normal weekly steady state — succeed and skip the PR,
+            # rather than failing the scheduled run and drowning real failures in alert noise.
+            echo "No upstream change; nothing to update."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Validate every CHANGED line — additions AND deletions — against strict, fully-
+          # anchored patterns (not a prefix check, which would accept smuggled Ruby like
+          # `version "x,<hex>"; system(...) #` or `sha256 :no_check`). Checking deletions too
+          # matters: a compromised artifact could bump version/sha256 while DELETING security
+          # lines (the `uninstall` sudoers cleanup, `depends_on arch`, `pkg`, `verified`).
+          # Each +/- content line must be EXACTLY a well-formed version or sha256 line.
+          changed="$(printf '%s\n' "$diff" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
+          illegal="$(printf '%s\n' "$changed" \
+            | grep -vE '^[+-]  version "[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{6},[0-9a-f]{40}"$' \
+            | grep -vE '^[+-]  sha256 "[0-9a-f]{64}"$' || true)"
+          if [ -n "$illegal" ]; then
+            echo "Generated cask changed lines other than the version/sha256 values — refusing:" >&2
+            printf '%s\n' "$illegal" >&2
+            exit 1
+          fi
+          # Require exactly one removed + one added line for each of version and sha256, so a
+          # compromised artifact can't smuggle in duplicate stanzas (which would break parsing
+          # or shadow the real values) while every individual line still looks well-formed.
+          for kind in version sha256; do
+            adds="$(printf '%s\n' "$changed" | grep -cE "^\+  ${kind} " || true)"
+            dels="$(printf '%s\n' "$changed" | grep -cE "^-  ${kind} " || true)"
+            if [ "$adds" != "1" ] || [ "$dels" != "1" ]; then
+              echo "Expected exactly one changed ${kind} line (got +${adds}/-${dels}) — refusing." >&2
+              exit 1
+            fi
+          done
+          # Enforce version monotonicity independently of the (untrusted-input) build job: the
+          # new date-version must be strictly greater than the current one. This closes the one
+          # residual angle of a compromised build picking installer bytes — a downgrade to an
+          # older (still legitimate, x74353-signed) DMG commit — without this job having to
+          # parse the DMG itself. The url host/repo line is already covered by the gate, so a
+          # bump can't redirect off the upstream repo.
+          newv="$(printf '%s\n' "$changed" | sed -n 's/^+  version "\([^",]*\),.*/\1/p' | head -1)"
+          oldv="$(printf '%s\n' "$changed" | sed -n 's/^-  version "\([^",]*\),.*/\1/p' | head -1)"
+          if [ -z "$newv" ] || [ -z "$oldv" ]; then
+            echo "Could not parse old/new version from the diff — refusing." >&2
+            exit 1
+          fi
+          highest="$(printf '%s\n%s\n' "$oldv" "$newv" | sort -V | tail -1)"
+          if [ "$newv" = "$oldv" ] || [ "$highest" != "$newv" ]; then
+            echo "New version $newv is not greater than current $oldv — refusing (downgrade)." >&2
+            exit 1
+          fi
+          echo "Cask diff is confined to the version/sha256 values and the version increases — safe to publish."
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Read updated version
+        id: read_version
+        if: steps.gate.outputs.changed == 'true'
+        run: |
+          # Plain shell (this job sets up no Ruby/Homebrew). Use the date before the comma —
+          # version.csv.first — as the human-facing PR version; the commit after the comma is
+          # a URL pin, not something to put in a branch name.
+          VERSION="$(sed -n 's/^[[:space:]]*version "\([^",]*\),.*/\1/p' Casks/amphetamine-power-protect.rb | head -1)"
+          if [ -z "$VERSION" ]; then
+            echo "Could not read version from Casks/amphetamine-power-protect.rb" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Independently verify the pinned DMG hash
+        if: steps.gate.outputs.changed == 'true'
+        # Re-derive the pinned commit + sha256 straight from the cask and confirm the sha256
+        # is the real hash of the DMG at that URL — WITHOUT parsing the DMG (curl + sha only,
+        # no hdiutil), so this stays safe in the write-token job. The build job produced this
+        # artifact after mounting an untrusted DMG; if that parsing were exploited it could
+        # commit a cask whose sha256 doesn't match the bytes at the pinned URL. Recomputing
+        # the hash here — in the job that holds the write token but never touches the DMG —
+        # refuses any forged artifact. Combined with the diff-gate (which pins the url
+        # host/repo and the version format) this confines a compromised build to a real,
+        # hash-matching DMG at an actual x74353 commit with a strictly increasing version.
+        run: |
+          commit="$(sed -n 's/^[[:space:]]*version "[^,]*,\([0-9a-f]\{40\}\)".*/\1/p' Casks/amphetamine-power-protect.rb | head -1)"
+          want="$(sed -n 's/^[[:space:]]*sha256 "\([0-9a-f]\{64\}\)".*/\1/p' Casks/amphetamine-power-protect.rb | head -1)"
+          if [ -z "$commit" ] || [ -z "$want" ]; then
+            echo "Could not read pinned commit / sha256 from the cask." >&2
+            exit 1
+          fi
+          url="https://raw.githubusercontent.com/x74353/Amphetamine-Power-Protect/${commit}/DMG/Power%20Protect%20for%20Amphetamine.dmg"
+          got="$(curl -fsSL "$url" | sha256sum | cut -d' ' -f1)"
+          if [ "$got" != "$want" ]; then
+            echo "Pinned DMG hash mismatch: cask declares $want but $url hashes to $got — refusing." >&2
+            exit 1
+          fi
+          echo "Pinned DMG hash independently verified ($got)."
+
+      - name: Create pull request
+        # Pinned to a full commit SHA (not the mutable @v7 tag): this third-party action runs
+        # with the job's write-capable GITHUB_TOKEN. Bump deliberately.
+        if: steps.gate.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          branch: update-amphetamine-power-protect-${{ steps.read_version.outputs.version }}
+          title: "amphetamine-power-protect ${{ steps.read_version.outputs.version }}"
+          commit-message: "amphetamine-power-protect ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Casks/amphetamine-power-protect.rb`.
+
+            - repins the DMG URL to the latest commit touching the installer
+            - updates the date-based version
+            - refreshes SHA256 value
+            - validated (style, audit, and full pkg contract verification) in the read-only `build` job
