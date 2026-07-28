@@ -20,8 +20,6 @@ jobs:
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update formula
         run: scripts/update-rar.sh "${{ inputs.version }}"
