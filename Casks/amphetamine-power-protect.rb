@@ -6,8 +6,7 @@ cask "amphetamine-power-protect" do
   version "2023.12.07.162415,895cfd55042cef4ccbe15741d022456ddd9bb2e3"
   sha256 "f5627906d61f141c73743ca37c4588fc79fcf2a163ef5f8f562fb7e0e85eb2ca"
 
-  url "https://raw.githubusercontent.com/x74353/Amphetamine-Power-Protect/#{version.csv.second}/DMG/Power%20Protect%20for%20Amphetamine.dmg",
-      verified: "raw.githubusercontent.com/x74353/Amphetamine-Power-Protect/"
+  url "https://raw.githubusercontent.com/x74353/Amphetamine-Power-Protect/#{version.csv.second}/DMG/Power%20Protect%20for%20Amphetamine.dmg"
   name "Power Protect for Amphetamine"
   desc "Closed-Display Mode power-transition fix for the Amphetamine app"
   homepage "https://x74353.github.io/Amphetamine-Power-Protect/"
@@ -16,7 +15,7 @@ cask "amphetamine-power-protect" do
   # bug is Apple-Silicon-specific). Gate on arm64 so Intel machines can't install a
   # passwordless-sudo grant they have no need for — least privilege for a root-running pkg.
   depends_on arch: :arm64
-  depends_on macos: :big_sur
+  depends_on :macos
 
   pkg "Install Power Protect.pkg"
 
