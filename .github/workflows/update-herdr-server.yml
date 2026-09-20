@@ -1,0 +1,54 @@
+name: update-herdr-server
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional release tag override (example: v0.1.0). Leave empty for the latest GitHub release."
+        required: false
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+
+      - name: Update cask
+        env:
+          # Read-only here; only lifts the unauthenticated GitHub API rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            scripts/update-herdr-server.sh "${{ inputs.version }}"
+          else
+            scripts/update-herdr-server.sh
+          fi
+
+      - name: Validate cask
+        run: brew style --cask drod3763/tap/herdr-server && brew audit --cask --strict drod3763/tap/herdr-server
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Casks/herdr-server.rb"); puts content[/version "([^"]+)"/, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-herdr-server-${{ steps.read_version.outputs.version }}
+          title: "herdr-server ${{ steps.read_version.outputs.version }}"
+          commit-message: "herdr-server ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Casks/herdr-server.rb`.
+
+            - updates version
+            - refreshes SHA256 value
