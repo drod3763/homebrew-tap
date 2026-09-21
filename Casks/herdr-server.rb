@@ -12,6 +12,9 @@ cask "herdr-server" do
     strategy :github_latest
   end
 
+  # The launcher spawns /opt/homebrew/bin/herdr (or /usr/local/bin/herdr, or HERDR_SERVER_BIN
+  # for a custom build); without the formula the LaunchAgent would just crash-loop.
+  depends_on formula: "herdr"
   # The Local Network grant binds to the ad-hoc signature of a specific build. A cask
   # cannot veto `brew upgrade`, so an upgrade does replace the granted bundle: the
   # already-running launcher keeps working (it is the old, granted build) until it
@@ -20,22 +23,11 @@ cask "herdr-server" do
 
   app "Herdr Server.app"
 
-  # The launcher only spawns /opt/homebrew/bin/herdr or /usr/local/bin/herdr (or
-  # HERDR_SERVER_BIN). A hard `depends_on formula: "herdr"` would lock out users of the
-  # tap's own herdr-mx fork (it conflicts_with "herdr"), so check for a binary instead and
-  # fail the install with the actionable choice.
-  #
   # Homebrew quarantines cask downloads; Gatekeeper then refuses to exec this ad-hoc-signed,
   # unnotarized launcher (SIGKILL directly, OS_REASON_EXEC under launchd), so the agent could
   # never start. Strip the attribute while the bundle is still staged (steps default to the
   # staged dir); the `app` move keeps it off. Integrity is already pinned by sha256.
   preflight_steps do
-    unless_path_exists "{{HOMEBREW_PREFIX}}/bin/herdr" do
-      unless_path_exists "/usr/local/bin/herdr" do
-        run "/bin/sh", args: ["-c", "echo 'Herdr Server needs a herdr binary first: " \
-                                    "brew install herdr (or drod3763/tap/herdr-mx)' >&2; exit 1"]
-      end
-    end
     run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "Herdr Server.app"], chdir: "."
   end
 
