@@ -1,0 +1,74 @@
+name: update-herdr-server
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional release tag override (example: v0.1.0). Leave empty for the latest GitHub release."
+        required: false
+        type: string
+  # Weekly is plenty: launcher releases are rare and each upgrade re-prompts the
+  # Local Network grant, so a human still merges the PR this opens.
+  schedule:
+    - cron: "0 8 * * 1"  # every Monday at 08:00 UTC
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
+
+      - name: Link the checkout as the tap
+        # Tap-qualified brew commands (style/audit below) resolve through Homebrew's taps
+        # dir, not the workspace. Symlink this checkout in so they validate exactly the cask
+        # the updater just wrote here — not a remote or pre-tapped copy.
+        run: |
+          tap_dir="$(brew --repository)/Library/Taps/drod3763/homebrew-tap"
+          rm -rf "$tap_dir"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
+
+      - name: Update cask
+        env:
+          # Only used for a GET on releases/latest (lifts the unauthenticated rate limit).
+          # The job's write permissions exist for the PR step below, so this token is
+          # write-capable; splitting update/validate into a contents:read job as
+          # update-amphetamine-power-protect.yml does would narrow it further.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Never interpolate the dispatch input into the script text: a caller could
+          # break out of the quotes. Bind it as an env var and expand it quoted.
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$VERSION" ]; then
+            scripts/update-herdr-server.sh "$VERSION"
+          else
+            scripts/update-herdr-server.sh
+          fi
+
+      - name: Validate cask
+        run: brew style --cask drod3763/tap/herdr-server && brew audit --cask --strict drod3763/tap/herdr-server
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Casks/herdr-server.rb"); puts content[/version "([^"]+)"/, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          branch: update-herdr-server-${{ steps.read_version.outputs.version }}
+          title: "herdr-server ${{ steps.read_version.outputs.version }}"
+          commit-message: "herdr-server ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Casks/herdr-server.rb`.
+
+            - updates version
+            - refreshes SHA256 value

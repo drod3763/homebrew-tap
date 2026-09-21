@@ -11,6 +11,7 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Formula/herdr-mx.rb`** — Formula for the herdr-mx fork (downloads prebuilt, minisign-signed binaries from GitHub Releases; dual-OS macOS + Linux, dual-arch ARM + Intel; self-update disabled by design, so updates ship through this tap)
 - **`Formula/git-delta-fork.rb`** — Formula for the drod3763 delta fork (HEAD-only; builds from source via `cargo`)
 - **`Casks/openin-helper.rb`** — Cask for OpenIn Helper macOS app (downloaded from loshadki.app appcast)
+- **`Casks/herdr-server.rb`** — Cask for Herdr Server.app (a bundled, resident parent for `herdr server` so macOS can grant it Local Network/TCC consent, herdrdev/herdr#808; zip from `drod3763/herdr-server-app` GitHub Releases; the Local Network grant is bound to each build's ad-hoc signature, so an upgrade replaces the granted bundle and the launcher must be re-granted after it restarts)
 - **`Casks/amphetamine-power-protect.rb`** — Cask for Power Protect for Amphetamine (runs a `.pkg` from a DMG in the x74353 GitHub repo that fixes Closed-Display Mode power transitions; upstream has no releases, so the DMG URL is pinned to a commit SHA and the version is derived from that commit's timestamp)
 
 ## Updating packages
@@ -69,6 +70,21 @@ scripts/update-herdr-mx.sh v0.7.1-mx.1
 ```
 
 The script downloads all four prebuilt binaries (macOS/Linux × ARM/Intel), **verifies each one's detached minisign signature against the fork's pinned public key before trusting it** (fails closed on a missing/invalid signature), computes their SHA256s, and regenerates the `on_macos`/`on_linux` blocks in `Formula/herdr-mx.rb`. Requires `minisign` in `PATH` (`brew install minisign`). Release tags carry an `-mx.N` suffix (e.g. `v0.7.1-mx.1`).
+
+### herdr-server (auto-detects latest GitHub release)
+
+```bash
+# Local — latest release
+scripts/update-herdr-server.sh
+
+# Local — specific tag
+scripts/update-herdr-server.sh v0.1.0
+
+# GitHub Actions (workflow_dispatch)
+# Workflow: update-herdr-server — tag input optional
+```
+
+The script downloads `Herdr-Server-<version>.zip` and its published `.sha256` from `drod3763/herdr-server-app` releases, refuses to pin unless the two agree, and patches `Casks/herdr-server.rb`. Each release is built once in that repo's CI because the Local Network grant binds to the build's ad-hoc signature; never rebuild the bundle in place on a granted machine.
 
 ### amphetamine-power-protect (auto-detects latest DMG commit)
 
