@@ -12,9 +12,10 @@ cask "herdr-server" do
     strategy :github_latest
   end
 
-  # The Local Network grant binds to the ad-hoc signature of a specific build, so the app
-  # must never be swapped underneath a user silently; upgrades are explicit and re-prompt.
-  auto_updates false
+  # The Local Network grant binds to the ad-hoc signature of a specific build. A cask
+  # cannot veto `brew upgrade`, so an upgrade does replace the granted bundle: the
+  # already-running launcher keeps working (it is the old, granted build) until it
+  # restarts, and the new build then prompts once more. Releases are rare on purpose.
   # The launcher only spawns /opt/homebrew/bin/herdr or /usr/local/bin/herdr (or
   # HERDR_SERVER_BIN); without the formula the LaunchAgent would just crash-loop.
   depends_on formula: "herdr"
@@ -31,8 +32,11 @@ cask "herdr-server" do
       #{appdir}/Herdr Server.app/Contents/MacOS/herdr-server-launcher
 
     Do not run `brew services start herdr` alongside it. The first LAN connection from a
-    herdr pane prompts to allow "Herdr Server" on the local network; after upgrading this
-    cask, macOS will ask again because the grant is bound to the previous build's signature.
-    See herdrdev/herdr#808.
+    herdr pane prompts to allow "Herdr Server" on the local network.
+
+    Upgrading this cask replaces the bundle, and the Local Network grant is bound to the
+    previous build's signature. The running launcher keeps the old grant until it
+    restarts; after that (or after `launchctl kickstart -k gui/$UID/local.herdr-server`),
+    allow "Herdr Server" again when macOS prompts. See herdrdev/herdr#808.
   EOS
 end
