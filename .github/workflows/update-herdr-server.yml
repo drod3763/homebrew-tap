@@ -37,7 +37,10 @@ jobs:
 
       - name: Update cask
         env:
-          # Read-only here; only lifts the unauthenticated GitHub API rate limit.
+          # Only used for a GET on releases/latest (lifts the unauthenticated rate limit).
+          # The job's write permissions exist for the PR step below, so this token is
+          # write-capable; splitting update/validate into a contents:read job as
+          # update-amphetamine-power-protect.yml does would narrow it further.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Never interpolate the dispatch input into the script text: a caller could
           # break out of the quotes. Bind it as an env var and expand it quoted.
