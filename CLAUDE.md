@@ -11,7 +11,7 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Formula/herdr-mx.rb`** — Formula for the herdr-mx fork (downloads prebuilt, minisign-signed binaries from GitHub Releases; dual-OS macOS + Linux, dual-arch ARM + Intel; self-update disabled by design, so updates ship through this tap)
 - **`Formula/git-delta-fork.rb`** — Formula for the drod3763 delta fork (HEAD-only; builds from source via `cargo`)
 - **`Casks/openin-helper.rb`** — Cask for OpenIn Helper macOS app (downloaded from loshadki.app appcast)
-- **`Casks/herdr-server.rb`** — Cask for Herdr Server.app (a bundled, resident parent for `herdr server` so macOS can grant it Local Network/TCC consent, herdrdev/herdr#808; zip from `drod3763/herdr-server-app` GitHub Releases; `auto_updates false` because the grant is bound to each build's ad-hoc signature)
+- **`Casks/herdr-server.rb`** — Cask for Herdr Server.app (a bundled, resident parent for `herdr server` so macOS can grant it Local Network/TCC consent, herdrdev/herdr#808; zip from `drod3763/herdr-server-app` GitHub Releases; the Local Network grant is bound to each build's ad-hoc signature, so an upgrade replaces the granted bundle and the launcher must be re-granted after it restarts)
 - **`Casks/amphetamine-power-protect.rb`** — Cask for Power Protect for Amphetamine (runs a `.pkg` from a DMG in the x74353 GitHub repo that fixes Closed-Display Mode power transitions; upstream has no releases, so the DMG URL is pinned to a commit SHA and the version is derived from that commit's timestamp)
 
 ## Updating packages
