@@ -25,6 +25,16 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
 
+      - name: Link the checkout as the tap
+        # Tap-qualified brew commands (style/audit below) resolve through Homebrew's taps
+        # dir, not the workspace. Symlink this checkout in so they validate exactly the cask
+        # the updater just wrote here — not a remote or pre-tapped copy.
+        run: |
+          tap_dir="$(brew --repository)/Library/Taps/drod3763/homebrew-tap"
+          rm -rf "$tap_dir"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
+
       - name: Update cask
         env:
           # Read-only here; only lifts the unauthenticated GitHub API rate limit.
