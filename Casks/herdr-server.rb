@@ -15,6 +15,9 @@ cask "herdr-server" do
   # The Local Network grant binds to the ad-hoc signature of a specific build, so the app
   # must never be swapped underneath a user silently; upgrades are explicit and re-prompt.
   auto_updates false
+  # The launcher only spawns /opt/homebrew/bin/herdr or /usr/local/bin/herdr (or
+  # HERDR_SERVER_BIN); without the formula the LaunchAgent would just crash-loop.
+  depends_on formula: "herdr"
   depends_on macos: :ventura
 
   app "Herdr Server.app"
