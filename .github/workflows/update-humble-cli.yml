@@ -122,6 +122,9 @@ jobs:
       - name: Create pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
+          # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
+          # PRs are held at action_required). Falls back to GITHUB_TOKEN if unset.
+          token: ${{ secrets.TAP_PR_TOKEN || secrets.GITHUB_TOKEN }}
           branch: update-humble-cli-${{ needs.resolve.outputs.version }}
           title: "humble-cli ${{ steps.check_version.outputs.bare }}"
           commit-message: "humble-cli ${{ steps.check_version.outputs.bare }}"
