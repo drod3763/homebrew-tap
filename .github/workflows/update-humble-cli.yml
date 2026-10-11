@@ -36,6 +36,13 @@ jobs:
       - name: Validate formula
         run: brew style --formula drod3763/tap/humble-cli && brew audit --strict drod3763/tap/humble-cli
 
+      # PRs opened with GITHUB_TOKEN don't trigger tests.yml automatically, so gate on a
+      # real build/install/test here before the PR exists.
+      - name: Build and test formula
+        run: |
+          brew install --build-from-source drod3763/tap/humble-cli
+          brew test drod3763/tap/humble-cli
+
       - name: Read updated version
         id: read_version
         run: |
