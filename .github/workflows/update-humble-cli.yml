@@ -24,9 +24,11 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
 
       - name: Update formula
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            scripts/update-humble-cli.sh "${{ inputs.version }}"
+          if [ -n "$VERSION" ]; then
+            scripts/update-humble-cli.sh "$VERSION"
           else
             scripts/update-humble-cli.sh
           fi
