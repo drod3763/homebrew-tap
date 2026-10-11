@@ -11,7 +11,8 @@ on:
 jobs:
   # Bumps the cask and freezes it as an artifact. Read-only token and no persisted git
   # credentials, so nothing that touches the upstream download can push or open PRs.
-  # No install step: the app needs a macOS Sequoia runner, and test-bot runs on the PR.
+  # No install step: the app needs a macOS Sequoia runner. Style/audit is the only gate;
+  # test-bot's install step (`--only-formulae`) doesn't install casks either.
   resolve:
     runs-on: ubuntu-24.04
     permissions:
