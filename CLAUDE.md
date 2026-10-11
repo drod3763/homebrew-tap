@@ -8,6 +8,7 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 
 - **`Formula/rar.rb`** — Formula for the RAR CLI (downloads prebuilt binaries from rarlab.com; dual-arch: ARM + Intel)
 - **`Formula/truenas-mcp.rb`** — Formula for TrueNAS MCP server (builds from source via `go build`; requires Go)
+- **`Formula/humble-cli.rb`** — Formula for humble-cli, a CLI for downloading Humble Bundle purchases (builds from source via `go build`; requires Go; injects the version via `-X main.version` and installs bash/zsh/fish completions)
 - **`Formula/herdr-mx.rb`** — Formula for the herdr-mx fork (downloads prebuilt, minisign-signed binaries from GitHub Releases; dual-OS macOS + Linux, dual-arch ARM + Intel; self-update disabled by design, so updates ship through this tap)
 - **`Formula/git-delta-fork.rb`** — Formula for the drod3763 delta fork (HEAD-only; builds from source via `cargo`)
 - **`Casks/openin-helper.rb`** — Cask for OpenIn Helper macOS app (downloaded from loshadki.app appcast)
@@ -54,6 +55,19 @@ scripts/update-truenas-mcp.sh v0.0.5
 
 # GitHub Actions (workflow_dispatch or weekly Monday cron)
 # Workflow: update-truenas-mcp — version input optional
+```
+
+### humble-cli (auto-detects latest GitHub release)
+
+```bash
+# Local — latest GitHub release
+scripts/update-humble-cli.sh
+
+# Local — specific version tag
+scripts/update-humble-cli.sh v0.23.2
+
+# GitHub Actions (workflow_dispatch or weekly Monday cron)
+# Workflow: update-humble-cli — version input optional
 ```
 
 ### herdr-mx (auto-detects latest GitHub release)
@@ -109,6 +123,7 @@ Because the cask installs a root-running, sudoers-writing `.pkg`, the updater **
 # Lint/style check
 brew style --formula drod3763/tap/rar
 brew style --formula drod3763/tap/truenas-mcp
+brew style --formula drod3763/tap/humble-cli
 brew style --formula drod3763/tap/herdr-mx
 brew style --cask drod3763/tap/openin-helper
 brew style --cask drod3763/tap/amphetamine-power-protect
@@ -116,6 +131,7 @@ brew style --cask drod3763/tap/amphetamine-power-protect
 # Audit
 brew audit --strict drod3763/tap/rar
 brew audit --strict drod3763/tap/truenas-mcp
+brew audit --strict drod3763/tap/humble-cli
 brew audit --strict drod3763/tap/herdr-mx
 brew audit --cask --strict drod3763/tap/openin-helper
 brew audit --cask --strict drod3763/tap/amphetamine-power-protect
@@ -125,7 +141,7 @@ CI (`tests.yml`) runs `brew test-bot` across Ubuntu, macOS Intel, and macOS ARM 
 
 ## Commit conventions
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
+Use [Conventional Commits](https://www.conventionalcommits.org/) for hand-written changes:
 
 ```
 <type>[optional scope]: <description>
@@ -138,15 +154,15 @@ Types used in this repo:
 | `feat` | New formula, cask, or updater script |
 | `fix` | Bug fix in formula, cask, or script |
 | `chore` | Repo setup, CI config, tooling changes |
-| `build` | Version/SHA bumps from updater scripts |
 
 Examples:
 ```
 feat: add truenas-mcp formula with automated updater
 fix: resolve shfmt and shellcheck issues in update-truenas-mcp.sh
-build(rar): bump to 7.21
 chore: init drod3763/tap homebrew tap
 ```
+
+Version bumps (from updater scripts or workflows) use Homebrew's own format instead, `<name> <version>` with the bare version (no `v` prefix), e.g. `rar 7.21` or `herdr-mx 0.7.3-mx.1`. This matches homebrew-core's [required format](https://docs.brew.sh/Formula-Cookbook#commit) and what `brew bump-formula-pr` generates.
 
 ## Key conventions
 
