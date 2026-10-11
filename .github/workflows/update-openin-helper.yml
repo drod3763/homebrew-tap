@@ -90,7 +90,9 @@ jobs:
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
-          changed="$(git diff -U0 -- Casks/openin-helper.rb | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
+          # Skip only the file header (everything before the first hunk). Filtering on a
+          # `+++`/`---` prefix would also drop content lines like `++system(...)`.
+          changed="$(git diff -U0 -- Casks/openin-helper.rb | awk '/^@@/ { hunk = 1; next } hunk && /^[+-]/')"
           illegal="$(printf '%s\n' "$changed" | grep -v '^$' \
             | grep -vE '^[+-]  version "[0-9]+(\.[0-9]+)*"$' \
             | grep -vE '^[+-]  sha256 "[0-9a-f]{64}"$' || true)"
