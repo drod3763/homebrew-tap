@@ -11,14 +11,19 @@ on:
     - cron: "0 8 * * 1"  # every Monday at 08:00 UTC
 
 jobs:
+  # Runs upstream code (build, completion generation, `brew test`), so it gets a
+  # read-only token and no persisted git credentials. Only the formula file leaves it.
   update:
     runs-on: ubuntu-22.04
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
@@ -36,6 +41,20 @@ jobs:
       - name: Validate formula
         run: brew style --formula drod3763/tap/humble-cli && brew audit --strict drod3763/tap/humble-cli
 
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Formula/humble-cli.rb"); puts content[%r{/tags/(v[^"]+)\.tar}, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Upload before any upstream code runs so the build/test step can't alter it.
+      - name: Upload formula
+        uses: actions/upload-artifact@v4
+        with:
+          name: humble-cli-formula
+          path: Formula/humble-cli.rb
+          if-no-files-found: error
+
       # PRs opened with GITHUB_TOKEN don't trigger tests.yml automatically, so gate on a
       # real build/install/test here before the PR exists.
       - name: Build and test formula
@@ -43,18 +62,39 @@ jobs:
           brew install --build-from-source drod3763/tap/humble-cli
           brew test drod3763/tap/humble-cli
 
-      - name: Read updated version
-        id: read_version
+  # Write-enabled, but never installs Homebrew or executes upstream code.
+  pull-request:
+    needs: update
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download formula
+        uses: actions/download-artifact@v4
+        with:
+          name: humble-cli-formula
+          path: Formula
+
+      - name: Check version
+        env:
+          VERSION: ${{ needs.update.outputs.version }}
         run: |
-          VERSION="$(ruby -e 'content = File.read("Formula/humble-cli.rb"); puts content[%r{/tags/(v[^"]+)\.tar}, 1]')"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ ! "$VERSION" =~ ^v[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "Unexpected version: $VERSION" >&2
+            exit 1
+          fi
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@v7
         with:
-          branch: update-humble-cli-${{ steps.read_version.outputs.version }}
-          title: "humble-cli ${{ steps.read_version.outputs.version }}"
-          commit-message: "humble-cli ${{ steps.read_version.outputs.version }}"
+          branch: update-humble-cli-${{ needs.update.outputs.version }}
+          title: "humble-cli ${{ needs.update.outputs.version }}"
+          commit-message: "humble-cli ${{ needs.update.outputs.version }}"
+          add-paths: Formula/humble-cli.rb
           body: |
             Automated update for `Formula/humble-cli.rb`.
 
