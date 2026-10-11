@@ -13,9 +13,20 @@ then
   exit 1
 fi
 
+# Fetch a GitHub API URL, adding the auth header only when a token is present (a token lifts
+# the unauthenticated rate limit shared by every job on a runner's public IP).
+gh_api_get() {
+  if [[ -n "${GITHUB_TOKEN:-}" ]]
+  then
+    curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" "$1"
+  else
+    curl -fsSL "$1"
+  fi
+}
+
 detect_latest() {
   # shellcheck disable=SC2016
-  curl -fsSL "https://api.github.com/repos/smbl64/humble-cli/releases/latest" |
+  gh_api_get "https://api.github.com/repos/smbl64/humble-cli/releases/latest" |
     ruby -rjson -e 'puts JSON.parse($stdin.read).fetch("tag_name")'
 }
 

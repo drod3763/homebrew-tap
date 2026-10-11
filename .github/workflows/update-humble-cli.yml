@@ -30,6 +30,9 @@ jobs:
 
       - name: Update formula
         env:
+          # Read-only here (job is contents: read); only lifts the API rate limit for the
+          # latest-release lookup.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
         run: |
           if [ -n "$VERSION" ]; then
