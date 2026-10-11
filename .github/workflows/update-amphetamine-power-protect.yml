@@ -255,10 +255,13 @@ jobs:
 
       - name: Create pull request
         # Pinned to a full commit SHA (not the mutable @v7 tag): this third-party action runs
-        # with the job's write-capable GITHUB_TOKEN. Bump deliberately.
+        # with a write-capable token (TAP_PR_TOKEN PAT). Bump deliberately.
         if: steps.gate.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
+          # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
+          # PRs are held at action_required). Falls back to GITHUB_TOKEN if unset.
+          token: ${{ secrets.TAP_PR_TOKEN || secrets.GITHUB_TOKEN }}
           branch: update-amphetamine-power-protect-${{ steps.read_version.outputs.version }}
           title: "amphetamine-power-protect ${{ steps.read_version.outputs.version }}"
           commit-message: "amphetamine-power-protect ${{ steps.read_version.outputs.version }}"
