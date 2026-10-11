@@ -1,0 +1,53 @@
+name: update-humble-cli
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version tag (example: v0.23.2). Leave empty for latest release."
+        required: false
+        type: string
+  schedule:
+    - cron: "0 8 * * 1"  # every Monday at 08:00 UTC
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+
+      - name: Update formula
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            scripts/update-humble-cli.sh "${{ inputs.version }}"
+          else
+            scripts/update-humble-cli.sh
+          fi
+
+      - name: Validate formula
+        run: brew style --formula drod3763/tap/humble-cli && brew audit --strict drod3763/tap/humble-cli
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Formula/humble-cli.rb"); puts content[%r{/tags/(v[^"]+)\.tar}, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update-humble-cli-${{ steps.read_version.outputs.version }}
+          title: "humble-cli ${{ steps.read_version.outputs.version }}"
+          commit-message: "humble-cli ${{ steps.read_version.outputs.version }}"
+          body: |
+            Automated update for `Formula/humble-cli.rb`.
+
+            - updates source tarball URL
+            - refreshes SHA256 value
