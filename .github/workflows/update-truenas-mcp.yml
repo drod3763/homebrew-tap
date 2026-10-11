@@ -11,22 +11,31 @@ on:
     - cron: "0 8 * * 1"  # every Monday at 08:00 UTC
 
 jobs:
-  update:
-    runs-on: ubuntu-22.04
+  # Bumps the formula and freezes it as an artifact. Read-only token, no persisted git
+  # credentials, and no upstream code runs here.
+  resolve:
+    runs-on: ubuntu-24.04
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
 
       - name: Update formula
+        env:
+          # Never interpolate the dispatch input into the script text: a caller could
+          # break out of the quotes. Bind it as an env var and expand it quoted.
+          VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            scripts/update-truenas-mcp.sh "${{ inputs.version }}"
+          if [ -n "$VERSION" ]; then
+            scripts/update-truenas-mcp.sh "$VERSION"
           else
             scripts/update-truenas-mcp.sh
           fi
@@ -40,14 +49,88 @@ jobs:
           VERSION="$(ruby -e 'content = File.read("Formula/truenas-mcp.rb"); puts content[%r{/tags/(v[^"]+)\.tar}, 1]')"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Upload formula
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: truenas-mcp-formula
+          path: Formula/truenas-mcp.rb
+          if-no-files-found: error
+
+  # Builds and tests the frozen formula on every platform test-bot covers, so an upstream
+  # release that doesn't compile fails here instead of opening a PR. It runs upstream code
+  # (build, `brew test`), so it stays read-only.
+  validate:
+    needs: resolve
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-26]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
+
+      - name: Use generated formula
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: truenas-mcp-formula
+          path: Formula
+
+      - name: Build and test formula
+        run: |
+          brew install --build-from-source drod3763/tap/truenas-mcp
+          brew test drod3763/tap/truenas-mcp
+
+  # Write-enabled, but never installs Homebrew or executes upstream code. Commits only the
+  # formula artifact that `validate` tested.
+  pull-request:
+    needs: [resolve, validate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download formula
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: truenas-mcp-formula
+          path: Formula
+
+      - name: Check version
+        id: check_version
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "Unexpected version: $VERSION" >&2
+            exit 1
+          fi
+          # Homebrew's bump format is `<name> <version>` with the bare version.
+          echo "bare=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
-          branch: update-truenas-mcp-${{ steps.read_version.outputs.version }}
-          title: "truenas-mcp ${{ steps.read_version.outputs.version }}"
-          commit-message: "truenas-mcp ${{ steps.read_version.outputs.version }}"
+          # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
+          # PRs are held at action_required). Falls back to GITHUB_TOKEN if unset.
+          token: ${{ secrets.TAP_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          branch: update-truenas-mcp-${{ needs.resolve.outputs.version }}
+          title: "truenas-mcp ${{ steps.check_version.outputs.bare }}"
+          commit-message: "truenas-mcp ${{ steps.check_version.outputs.bare }}"
+          add-paths: Formula/truenas-mcp.rb
           body: |
             Automated update for `Formula/truenas-mcp.rb`.
 
             - updates source tarball URL
             - refreshes SHA256 value
+            - built from source and tested on Linux x86_64/aarch64 and macOS x86_64/aarch64

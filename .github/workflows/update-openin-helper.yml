@@ -9,22 +9,32 @@ on:
         type: string
 
 jobs:
-  update:
-    runs-on: ubuntu-22.04
+  # Bumps the cask and freezes it as an artifact. Read-only token and no persisted git
+  # credentials, so nothing that touches the upstream download can push or open PRs.
+  # No install step: the app needs a macOS Sequoia runner, and test-bot runs on the PR.
+  resolve:
+    runs-on: ubuntu-24.04
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
 
       - name: Update cask
+        env:
+          # Never interpolate the dispatch input into the script text: a caller could
+          # break out of the quotes. Bind it as an env var and expand it quoted.
+          VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            scripts/update-openin-helper.sh "${{ inputs.version }}"
+          if [ -n "$VERSION" ]; then
+            scripts/update-openin-helper.sh "$VERSION"
           else
             scripts/update-openin-helper.sh
           fi
@@ -38,12 +48,50 @@ jobs:
           VERSION="$(ruby -e 'content = File.read("Casks/openin-helper.rb"); puts content[/version "([^"]+)"/, 1]')"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Upload cask
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: openin-helper-cask
+          path: Casks/openin-helper.rb
+          if-no-files-found: error
+
+  # Write-enabled, but never installs Homebrew or touches the upstream download. Commits
+  # only the cask artifact that `resolve` validated.
+  pull-request:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download cask
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: openin-helper-cask
+          path: Casks
+
+      - name: Check version
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "Unexpected version: $VERSION" >&2
+            exit 1
+          fi
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
-          branch: update-openin-helper-${{ steps.read_version.outputs.version }}
-          title: "openin-helper ${{ steps.read_version.outputs.version }}"
-          commit-message: "openin-helper ${{ steps.read_version.outputs.version }}"
+          # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
+          # PRs are held at action_required). Falls back to GITHUB_TOKEN if unset.
+          token: ${{ secrets.TAP_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          branch: update-openin-helper-${{ needs.resolve.outputs.version }}
+          title: "openin-helper ${{ needs.resolve.outputs.version }}"
+          commit-message: "openin-helper ${{ needs.resolve.outputs.version }}"
+          add-paths: Casks/openin-helper.rb
           body: |
             Automated update for `Casks/openin-helper.rb`.
 

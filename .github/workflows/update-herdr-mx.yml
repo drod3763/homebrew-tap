@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # The updater invokes Ruby (JSON parse + inline formula rewrite); set up Homebrew
       # for its portable Ruby rather than relying on whatever the runner image ships.
@@ -83,6 +85,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
@@ -133,6 +137,9 @@ jobs:
       - name: Create pull request
         uses: peter-evans/create-pull-request@v7
         with:
+          # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
+          # PRs are held at action_required). Falls back to GITHUB_TOKEN if unset.
+          token: ${{ secrets.TAP_PR_TOKEN || secrets.GITHUB_TOKEN }}
           branch: update-herdr-mx-${{ steps.read_version.outputs.version }}
           title: "herdr-mx ${{ steps.read_version.outputs.version }}"
           commit-message: "herdr-mx ${{ steps.read_version.outputs.version }}"
