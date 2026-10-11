@@ -108,6 +108,7 @@ jobs:
           path: Formula
 
       - name: Check version
+        id: check_version
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
@@ -115,13 +116,15 @@ jobs:
             echo "Unexpected version: $VERSION" >&2
             exit 1
           fi
+          # Homebrew's bump format is `<name> <version>` with the bare version.
+          echo "bare=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
           branch: update-humble-cli-${{ needs.resolve.outputs.version }}
-          title: "humble-cli ${{ needs.resolve.outputs.version }}"
-          commit-message: "humble-cli ${{ needs.resolve.outputs.version }}"
+          title: "humble-cli ${{ steps.check_version.outputs.bare }}"
+          commit-message: "humble-cli ${{ steps.check_version.outputs.bare }}"
           add-paths: Formula/humble-cli.rb
           body: |
             Automated update for `Formula/humble-cli.rb`.

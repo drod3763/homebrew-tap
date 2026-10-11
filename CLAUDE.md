@@ -141,7 +141,7 @@ CI (`tests.yml`) runs `brew test-bot` across Ubuntu, macOS Intel, and macOS ARM 
 
 ## Commit conventions
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
+Use [Conventional Commits](https://www.conventionalcommits.org/) for hand-written changes:
 
 ```
 <type>[optional scope]: <description>
@@ -154,15 +154,15 @@ Types used in this repo:
 | `feat` | New formula, cask, or updater script |
 | `fix` | Bug fix in formula, cask, or script |
 | `chore` | Repo setup, CI config, tooling changes |
-| `build` | Version/SHA bumps from updater scripts |
 
 Examples:
 ```
 feat: add truenas-mcp formula with automated updater
 fix: resolve shfmt and shellcheck issues in update-truenas-mcp.sh
-build(rar): bump to 7.21
 chore: init drod3763/tap homebrew tap
 ```
+
+Version bumps (from updater scripts or workflows) use Homebrew's own format instead, `<name> <version>` with the bare version (no `v` prefix), e.g. `rar 7.21` or `herdr-mx 0.7.3-mx.1`. This matches homebrew-core's [required format](https://docs.brew.sh/Formula-Cookbook#commit) and what `brew bump-formula-pr` generates.
 
 ## Key conventions
 
