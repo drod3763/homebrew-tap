@@ -13,14 +13,22 @@ on:
     - cron: "0 8 * * 1"  # every Monday at 08:00 UTC
 
 jobs:
-  update:
-    runs-on: ubuntu-22.04
+  # Bumps the cask and freezes it as an artifact. Read-only token and no persisted git
+  # credentials, so nothing that touches the upstream release can push or open PRs.
+  # No install step: the cask pulls in the herdr formula and needs a macOS runner.
+  # Style/audit is the only gate; test-bot's install step (`--only-formulae`) doesn't
+  # install casks either.
+  resolve:
+    runs-on: ubuntu-24.04
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
@@ -37,10 +45,8 @@ jobs:
 
       - name: Update cask
         env:
-          # Only used for a GET on releases/latest (lifts the unauthenticated rate limit).
-          # The job's write permissions exist for the PR step below, so this token is
-          # write-capable; splitting update/validate into a contents:read job as
-          # update-amphetamine-power-protect.yml does would narrow it further.
+          # Read-only here (job is contents: read); only lifts the API rate limit for the
+          # latest-release lookup.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Never interpolate the dispatch input into the script text: a caller could
           # break out of the quotes. Bind it as an env var and expand it quoted.
@@ -61,12 +67,50 @@ jobs:
           VERSION="$(ruby -e 'content = File.read("Casks/herdr-server.rb"); puts content[/version "([^"]+)"/, 1]')"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Upload cask
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: herdr-server-cask
+          path: Casks/herdr-server.rb
+          if-no-files-found: error
+
+  # Write-enabled, but never installs Homebrew or touches the upstream release. Commits
+  # only the cask artifact that `resolve` validated.
+  pull-request:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download cask
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: herdr-server-cask
+          path: Casks
+
+      - name: Check version
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "Unexpected version: $VERSION" >&2
+            exit 1
+          fi
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
-          branch: update-herdr-server-${{ steps.read_version.outputs.version }}
-          title: "herdr-server ${{ steps.read_version.outputs.version }}"
-          commit-message: "herdr-server ${{ steps.read_version.outputs.version }}"
+          # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
+          # PRs are held at action_required). Falls back to GITHUB_TOKEN if unset.
+          token: ${{ secrets.TAP_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          branch: update-herdr-server-${{ needs.resolve.outputs.version }}
+          title: "herdr-server ${{ needs.resolve.outputs.version }}"
+          commit-message: "herdr-server ${{ needs.resolve.outputs.version }}"
+          add-paths: Casks/herdr-server.rb
           body: |
             Automated update for `Casks/herdr-server.rb`.
 

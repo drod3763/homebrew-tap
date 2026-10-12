@@ -47,6 +47,14 @@ else
   url="${latest_data#*$'\n'}"
 fi
 
+# The version comes from the dispatch input or the upstream appcast and is written into
+# Ruby source below, so reject anything that isn't a plain dotted version.
+if [[ ! "${version}" =~ ^[0-9]+(\.[0-9]+)*$ ]]
+then
+  printf 'Refusing invalid version: %s\n' "${version}" >&2
+  exit 1
+fi
+
 if command -v shasum >/dev/null 2>&1
 then
   sha256="$(curl -fL "${url}" | shasum -a 256 | cut -d' ' -f1)"

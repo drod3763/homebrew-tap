@@ -21,12 +21,14 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       # The updater invokes Ruby (JSON parse + inline formula rewrite); set up Homebrew
       # for its portable Ruby rather than relying on whatever the runner image ships.
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
 
       - name: Resolve and validate target tag
         id: resolve
@@ -59,7 +61,7 @@ jobs:
         run: scripts/update-herdr-mx.sh "$TAG"
 
       - name: Upload generated formula
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: herdr-mx-formula
           path: Formula/herdr-mx.rb
@@ -82,13 +84,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
 
       - name: Use generated formula
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: herdr-mx-formula
           path: Formula
@@ -109,12 +113,12 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       # Commit the exact formula the matrix validated — no re-resolution or re-running
       # the updater here, so the published PR can only contain validated artifacts.
       - name: Download generated formula
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: herdr-mx-formula
           path: Formula
@@ -131,11 +135,15 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
+          # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
+          # PRs are held at action_required). Falls back to GITHUB_TOKEN if unset.
+          token: ${{ secrets.TAP_PR_TOKEN || secrets.GITHUB_TOKEN }}
           branch: update-herdr-mx-${{ steps.read_version.outputs.version }}
           title: "herdr-mx ${{ steps.read_version.outputs.version }}"
           commit-message: "herdr-mx ${{ steps.read_version.outputs.version }}"
+          add-paths: Formula/herdr-mx.rb
           body: |
             Automated update for `Formula/herdr-mx.rb`.
 

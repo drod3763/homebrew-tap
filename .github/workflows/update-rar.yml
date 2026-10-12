@@ -9,30 +9,86 @@ on:
         type: string
 
 jobs:
-  update:
-    runs-on: ubuntu-22.04
+  # Bumps the formula and freezes it as an artifact. Read-only token and no persisted git
+  # credentials, so nothing that touches the upstream tarballs can push or open PRs.
+  resolve:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@24728b77430f9659b8d89068e4afe7f5fd0f973c # main
+
+      - name: Update formula
+        env:
+          # Never interpolate the dispatch input into the script text: a caller could
+          # break out of the quotes. Bind it as an env var and expand it quoted. The
+          # script rejects anything that isn't a dotted version.
+          VERSION: ${{ inputs.version }}
+        run: scripts/update-rar.sh "$VERSION"
+
+      - name: Validate formula
+        run: brew style --formula drod3763/tap/rar && brew audit --strict drod3763/tap/rar
+
+      - name: Read updated version
+        id: read_version
+        run: |
+          VERSION="$(ruby -e 'content = File.read("Formula/rar.rb"); puts content[/version "([^"]+)"/, 1]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload formula
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rar-formula
+          path: Formula/rar.rb
+          if-no-files-found: error
+
+  # Write-enabled, but never installs Homebrew or touches the upstream tarballs. Commits
+  # only the formula artifact that `resolve` validated.
+  pull-request:
+    needs: resolve
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@main
+      - name: Download formula
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: rar-formula
+          path: Formula
 
-      - name: Update formula
-        run: scripts/update-rar.sh "${{ inputs.version }}"
-
-      - name: Validate formula
-        run: brew style --formula drod3763/tap/rar && brew audit --strict drod3763/tap/rar
+      - name: Check version
+        # The branch and title use the version read back from the formula, not the raw
+        # dispatch input, and it must still look like a dotted version here.
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "Unexpected version: $VERSION" >&2
+            exit 1
+          fi
 
       - name: Create pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
-          branch: update-rar-${{ inputs.version }}
-          title: "rar ${{ inputs.version }}"
-          commit-message: "rar ${{ inputs.version }}"
+          # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
+          # PRs are held at action_required). Falls back to GITHUB_TOKEN if unset.
+          token: ${{ secrets.TAP_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          branch: update-rar-${{ needs.resolve.outputs.version }}
+          title: "rar ${{ needs.resolve.outputs.version }}"
+          commit-message: "rar ${{ needs.resolve.outputs.version }}"
+          add-paths: Formula/rar.rb
           body: |
             Automated update for `Formula/rar.rb`.
 
