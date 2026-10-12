@@ -122,8 +122,24 @@ jobs:
           if git cat-file -e "origin/$base:Casks/amphetamine-power-protect.rb" 2>/dev/null
           then
             git show "origin/$base:Casks/amphetamine-power-protect.rb" > /tmp/base-cask.rb
-            d="$(git --no-pager diff --no-index -- /tmp/base-cask.rb Casks/amphetamine-power-protect.rb || true)"
-            changed="$(printf '%s\n' "$d" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
+            # --text so a NUL byte (where Ruby stops parsing) can't turn the change into a
+            # hunk-less "Binary files differ" diff.
+            d="$(git --no-pager diff --no-index --text -- /tmp/base-cask.rb Casks/amphetamine-power-protect.rb || true)"
+            # A real change has at least one hunk and only plain content-diff headers.
+            # Refuse mode, binary and other metadata-only diffs, which have no `@@` lines.
+            if [ -n "$d" ]; then
+              bad_header="$(printf '%s\n' "$d" | awk '/^@@/ { exit } { print }' \
+                | grep -vE '^diff --git ' | grep -vE '^index [0-9a-f]+\.\.[0-9a-f]+ 100644$' \
+                | grep -vE '^--- a/' | grep -vE '^\+\+\+ b/' || true)"
+              if [ -n "$bad_header" ] || ! printf '%s\n' "$d" | grep -q '^@@'; then
+                echo "PR cask diff vs base is not a plain content change — refusing:" >&2
+                printf '%s\n' "$d" | awk '/^@@/ { exit } { print }' >&2
+                exit 1
+              fi
+            fi
+            # Skip only the file header (everything before the first hunk). Filtering on a
+            # `+++`/`---` prefix would also drop content lines like `++system(...)`.
+            changed="$(printf '%s\n' "$d" | awk '/^@@/ { hunk = 1; next } hunk && /^[+-]/')"
             illegal="$(printf '%s\n' "$changed" \
               | grep -vE '^[+-]  version "[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{6},[0-9a-f]{40}"$' \
               | grep -vE '^[+-]  sha256 "[0-9a-f]{64}"$' || true)"
