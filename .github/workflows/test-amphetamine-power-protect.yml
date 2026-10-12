@@ -123,7 +123,9 @@ jobs:
           then
             git show "origin/$base:Casks/amphetamine-power-protect.rb" > /tmp/base-cask.rb
             d="$(git --no-pager diff --no-index -- /tmp/base-cask.rb Casks/amphetamine-power-protect.rb || true)"
-            changed="$(printf '%s\n' "$d" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)"
+            # Skip only the file header (everything before the first hunk). Filtering on a
+            # `+++`/`---` prefix would also drop content lines like `++system(...)`.
+            changed="$(printf '%s\n' "$d" | awk '/^@@/ { hunk = 1; next } hunk && /^[+-]/')"
             illegal="$(printf '%s\n' "$changed" \
               | grep -vE '^[+-]  version "[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{6},[0-9a-f]{40}"$' \
               | grep -vE '^[+-]  sha256 "[0-9a-f]{64}"$' || true)"
