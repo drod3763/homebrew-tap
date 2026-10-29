@@ -15,6 +15,7 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Casks/herdr-server.rb`** — Cask for Herdr Server.app (a bundled, resident parent for `herdr server` so macOS can grant it Local Network/TCC consent, herdrdev/herdr#808; zip from `drod3763/herdr-server-app` GitHub Releases; the Local Network grant is bound to each build's ad-hoc signature, so an upgrade replaces the granted bundle and the launcher must be re-granted after it restarts)
 - **`Casks/amphetamine-power-protect.rb`** — Cask for Power Protect for Amphetamine (runs a `.pkg` from a DMG in the x74353 GitHub repo that fixes Closed-Display Mode power transitions; upstream has no releases, so the DMG URL is pinned to a commit SHA and the version is derived from that commit's timestamp)
 - **`Casks/pocket-sync.rb`** — Cask for Pocket Sync, a desktop app for managing an Analogue Pocket (universal DMG from `neil-morrison44/pocket-sync` GitHub Releases; signed + notarized; the app self-updates via Tauri, so the cask sets `auto_updates true`)
+- **`Casks/rex.rb`** — Cask for Superlogical's Rex beta (`Rex Beta.app`; universal DMG from the public snapshot channel on `blob.superlogical.com`; Developer ID signed + notarized; the app self-updates via Sparkle, so the cask sets `auto_updates true`)
 
 ## Updating packages
 
@@ -133,6 +134,16 @@ scripts/update-pocket-sync.sh v7.1.1
 
 Upstream publishes no `.sha256` sidecar, so the script reads the asset's `digest` from the GitHub releases API and refuses to pin unless it matches the SHA256 of the downloaded `Pocket.Sync_<version>_universal.dmg` (fails closed if the asset or digest is missing), then patches `Casks/pocket-sync.rb`.
 
+### rex (manual bump)
+
+No updater script. Snapshot builds ship roughly hourly and the app updates itself through Sparkle, so the pinned build only matters for fresh installs. Old snapshot DMGs stay hosted, so the pinned URL keeps working. To bump:
+
+```bash
+brew bump --cask --open-pr --no-fork drod3763/tap/rex
+```
+
+`livecheck` reads the Sparkle appcast at `https://blob.superlogical.com/public/rex-app/snapshot/appcast.xml`; the version is `<short version>,<build>` (e.g. `0.1.0,1632`).
+
 ## Validating changes
 
 ```bash
@@ -144,6 +155,7 @@ brew style --formula drod3763/tap/herdr-mx
 brew style --cask drod3763/tap/openin-helper
 brew style --cask drod3763/tap/amphetamine-power-protect
 brew style --cask drod3763/tap/pocket-sync
+brew style --cask drod3763/tap/rex
 
 # Audit
 brew audit --strict drod3763/tap/rar
@@ -153,6 +165,7 @@ brew audit --strict drod3763/tap/herdr-mx
 brew audit --cask --strict drod3763/tap/openin-helper
 brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 brew audit --cask --strict drod3763/tap/pocket-sync
+brew audit --cask --strict drod3763/tap/rex
 ```
 
 CI (`tests.yml`) runs `brew test-bot` across Ubuntu, macOS Intel, and macOS ARM on every push/PR.
