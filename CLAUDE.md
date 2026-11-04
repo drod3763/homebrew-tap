@@ -16,6 +16,8 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Casks/amphetamine-power-protect.rb`** — Cask for Power Protect for Amphetamine (runs a `.pkg` from a DMG in the x74353 GitHub repo that fixes Closed-Display Mode power transitions; upstream has no releases, so the DMG URL is pinned to a commit SHA and the version is derived from that commit's timestamp)
 - **`Casks/pocket-sync.rb`** — Cask for Pocket Sync, a desktop app for managing an Analogue Pocket (universal DMG from `neil-morrison44/pocket-sync` GitHub Releases; signed + notarized; the app self-updates via Tauri, so the cask sets `auto_updates true`)
 
+Packages that must stay private (e.g. the invite-only `rex` beta) live in the separate private tap `drod3763/private` (repo `drod3763/homebrew-private`, checked out at `~/Projects/homebrew-private`). That repo is the pre-2026-11-04 `homebrew-tap` renamed, so it holds this tap's full earlier PR and commit history; this public repo was restarted from a single commit on 2026-11-04.
+
 ## Updating packages
 
 ### RAR (manual version bump required)
