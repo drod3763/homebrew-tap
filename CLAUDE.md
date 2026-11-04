@@ -15,6 +15,7 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Casks/herdr-server.rb`** — Cask for Herdr Server.app (a bundled, resident parent for `herdr server` so macOS can grant it Local Network/TCC consent, herdrdev/herdr#808; zip from `drod3763/herdr-server-app` GitHub Releases; the Local Network grant is bound to each build's ad-hoc signature, so an upgrade replaces the granted bundle and the launcher must be re-granted after it restarts)
 - **`Casks/amphetamine-power-protect.rb`** — Cask for Power Protect for Amphetamine (runs a `.pkg` from a DMG in the x74353 GitHub repo that fixes Closed-Display Mode power transitions; upstream has no releases, so the DMG URL is pinned to a commit SHA and the version is derived from that commit's timestamp)
 - **`Casks/pocket-sync.rb`** — Cask for Pocket Sync, a desktop app for managing an Analogue Pocket (universal DMG from `neil-morrison44/pocket-sync` GitHub Releases; signed + notarized; the app self-updates via Tauri, so the cask sets `auto_updates true`)
+- **`Casks/displaylink@16.rb`** — Cask pinned to DisplayLink Manager 16.2, the last 16.x release (same Synaptics `.pkg` and uninstall/zap stanzas as the upstream `displaylink` cask, which it conflicts with; livecheck skipped, so it is never bumped)
 
 ## Updating packages
 
@@ -144,6 +145,7 @@ brew style --formula drod3763/tap/herdr-mx
 brew style --cask drod3763/tap/openin-helper
 brew style --cask drod3763/tap/amphetamine-power-protect
 brew style --cask drod3763/tap/pocket-sync
+brew style --cask drod3763/tap/displaylink@16
 
 # Audit
 brew audit --strict drod3763/tap/rar
@@ -153,6 +155,7 @@ brew audit --strict drod3763/tap/herdr-mx
 brew audit --cask --strict drod3763/tap/openin-helper
 brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 brew audit --cask --strict drod3763/tap/pocket-sync
+brew audit --cask --strict drod3763/tap/displaylink@16
 ```
 
 CI (`tests.yml`) runs `brew test-bot` across Ubuntu, macOS Intel, and macOS ARM on every push/PR.
