@@ -112,6 +112,34 @@ jobs:
             exit 1
           fi
 
+      - name: Refuse to re-pin an open update PR
+        # The updater only compares against the base cask, so if a PR for this version is
+        # already open and upstream has since replaced a zip, this run would silently reset
+        # that PR's branch to the new checksums. Hold it to the same rule as a merged pin:
+        # changed bytes under an existing version need a deliberate manual edit.
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          branch="update-hint-control-${VERSION}"
+          rc=0
+          git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null || rc=$?
+          if [ "$rc" -eq 2 ]; then
+            echo "No open update branch for ${VERSION}."
+            exit 0
+          elif [ "$rc" -ne 0 ]; then
+            echo "Could not query origin for ${branch} (exit ${rc})" >&2
+            exit 1
+          fi
+          git fetch --depth=1 origin "refs/heads/${branch}"
+          shas() { grep -Eo '(arm|intel):[[:space:]]+"[0-9a-f]{64}"' | tr -s ' '; }
+          pinned="$(git show FETCH_HEAD:Casks/hint-control.rb | shas)"
+          fresh="$(shas < Casks/hint-control.rb)"
+          if [ -z "$pinned" ] || [ "$pinned" != "$fresh" ]; then
+            echo "::error::${branch} already proposes different checksums for ${VERSION}; upstream may have replaced an asset. Review and edit that PR by hand."
+            printf 'open PR:\n%s\nthis run:\n%s\n' "$pinned" "$fresh" >&2
+            exit 1
+          fi
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
