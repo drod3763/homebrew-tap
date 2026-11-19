@@ -133,14 +133,14 @@ arm_sha = ENV.fetch("ARM_SHA")
 intel_sha = ENV.fetch("INTEL_SHA")
 [arm_sha, intel_sha].each { |s| raise "Refusing to write malformed sha256 #{s.inspect}" unless s.match?(/\A[0-9a-f]{64}\z/) }
 
-# Read, check and write under one exclusive lock on the cask itself, so a concurrent run
-# cannot slip a newer pin in between the version checks and the write. The early downgrade
-# check above only avoids needless downloads; this one, against the file as it is now, is
-# authoritative. The file is rewritten in place: renaming a new file over it would leave a
-# waiting run holding the lock on the old, stale inode.
-cask = File.open(path, "r+")
-cask.flock(File::LOCK_EX)
-content = cask.read
+# Read, check and write under one exclusive lock, so a concurrent run cannot slip a newer
+# pin in between the version checks and the write. The early downgrade check above only
+# avoids needless downloads; this one, against the file as it is now, is authoritative.
+# The lock is on the Casks directory, not the cask: the cask is replaced by rename, and a
+# lock on its old inode would not stop a waiting run.
+lock = File.open(File.dirname(path))
+lock.flock(File::LOCK_EX)
+content = File.read(path)
 raise "Failed to update #{path}: version line not found" unless content =~ /version "[^"]+"/
 on_disk = content[/version "([^"]+)"/, 1]
 downgrade = Gem::Version.new(version) < Gem::Version.new(on_disk)
@@ -166,10 +166,13 @@ raise "Failed to update #{path}: version" unless updated.include?(%(version "#{v
 raise "Failed to update #{path}: arm sha256" unless updated.include?(%("#{arm_sha}"))
 raise "Failed to update #{path}: intel sha256" unless updated.include?(%("#{intel_sha}"))
 
-cask.rewind
-cask.write(updated)
-cask.truncate(cask.pos)
-cask.close
+# Write a complete, synced copy next to the cask and rename it into place, so a failed or
+# interrupted write leaves the original untouched.
+tmp = "#{path}.tmp-#{Process.pid}"
+at_exit { File.unlink(tmp) if File.exist?(tmp) }
+File.open(tmp, File::WRONLY | File::CREAT | File::EXCL, File.stat(path).mode & 0o7777) { |f| f.write(updated); f.flush; f.fsync }
+File.rename(tmp, path)
+lock.close
 '
 
 printf 'Updated %s to %s (arm %s, intel %s)\n' "${cask_path}" "${version}" "${arm_sha}" "${intel_sha}"
