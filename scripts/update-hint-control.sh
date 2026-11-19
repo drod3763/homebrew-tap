@@ -92,7 +92,8 @@ gh_api_get "https://api.github.com/repos/${upstream}/releases/tags/${tag}" >"${r
 # explicitly on failure instead of relying on `set -e`.
 verified_sha() {
   local asset="$1"
-  local published sha
+  local published sha listing
+  local app_entry="HINT Control.app/Contents/Info.plist"
 
   printf 'Looking up GitHub digest for %s...\n' "${asset}" >&2
   published="$(
@@ -109,7 +110,15 @@ verified_sha() {
   curl -fsSL -o "${workdir}/${asset}" "${base}/${asset}" || return 1
   # A failed hash leaves sha empty; the format check below rejects it.
   sha="$(sha256_of "${workdir}/${asset}")"
+  # The cask installs "HINT Control.app" from the zip root; a correctly hashed zip that
+  # nests or renames the bundle would still break installs, so require it.
+  listing="$(zipinfo -1 "${workdir}/${asset}")" || return 1
   rm -f "${workdir}/${asset}"
+  if ! grep -qxF "${app_entry}" <<<"${listing}"
+  then
+    printf '%s does not contain %s at its root\n' "${asset}" "${app_entry}" >&2
+    return 1
+  fi
   if [[ ! "${published}" =~ ^[0-9a-f]{64}$ || ! "${sha}" =~ ^[0-9a-f]{64}$ ]]
   then
     printf 'Malformed checksum for %s: computed %q, release says %q\n' "${asset}" "${sha}" "${published}" >&2
