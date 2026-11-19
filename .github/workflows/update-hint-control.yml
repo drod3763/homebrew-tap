@@ -119,6 +119,32 @@ jobs:
             exit 1
           fi
 
+      - name: Recheck against the current main
+        # Both jobs check out the triggering commit, and a re-run of a failed run reuses it,
+        # so main may have moved on since the updater compared versions. Repeat its
+        # downgrade and same-version rules against main as it is now.
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          ALLOW_DOWNGRADE: ${{ inputs.allow_downgrade }}
+        run: |
+          git fetch --depth=1 origin refs/heads/main
+          base="$(git show FETCH_HEAD:Casks/hint-control.rb)"
+          base_version="$(grep -Eo 'version "[^"]+"' <<<"$base" | head -1 | cut -d'"' -f2)"
+          if [[ ! "$base_version" =~ ^[0-9]+(\.[0-9]+)+$ ]]; then
+            echo "Unexpected version on main: $base_version" >&2
+            exit 1
+          fi
+          shas() { grep -Eo '(arm|intel):[[:space:]]+"[0-9a-f]{64}"' | tr -s ' '; }
+          if [ "$VERSION" = "$base_version" ]; then
+            if [ "$(shas <<<"$base")" != "$(shas < Casks/hint-control.rb)" ]; then
+              echo "::error::main already pins ${VERSION} with different checksums; upstream may have replaced an asset. Edit the cask by hand."
+              exit 1
+            fi
+          elif [ "$(printf '%s\n%s\n' "$VERSION" "$base_version" | sort -V | head -1)" = "$VERSION" ] && [ "$ALLOW_DOWNGRADE" != "true" ]; then
+            echo "::error::main is already at ${base_version}; refusing to propose ${VERSION} without allow_downgrade."
+            exit 1
+          fi
+
       - name: Refuse to re-pin an open update PR
         # The updater only compares against the base cask, so if a PR for this version is
         # already open and upstream has since replaced a zip, this run would silently reset
