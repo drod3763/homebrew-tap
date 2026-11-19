@@ -149,10 +149,13 @@ jobs:
           fi
 
       - name: Refuse to re-pin an open update PR
+        id: open_pr
         # The updater only compares against the base cask, so if a PR for this version is
         # already open and upstream has since replaced a zip, this run would silently reset
         # that PR's branch to the new checksums. Hold it to the same rule as a merged pin:
-        # changed bytes under an existing version need a deliberate manual edit.
+        # changed bytes under an existing version need a deliberate manual edit. When the
+        # pins match, leave the branch alone: resetting it would erase any manual fixes
+        # pushed to that PR.
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
@@ -175,8 +178,11 @@ jobs:
             printf 'open PR:\n%s\nthis run:\n%s\n' "$pinned" "$fresh" >&2
             exit 1
           fi
+          echo "${branch} already pins these checksums; leaving it untouched."
+          echo "exists=true" >> "$GITHUB_OUTPUT"
 
       - name: Create pull request
+        if: steps.open_pr.outputs.exists != 'true'
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:
           # PAT so test-bot runs on the PR without manual approval (GITHUB_TOKEN-opened
