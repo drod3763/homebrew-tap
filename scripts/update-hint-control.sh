@@ -140,16 +140,13 @@ raise "Failed to update #{path}: intel sha256 not found" unless content =~ /inte
 
 # Same version, different bytes means upstream replaced assets under an existing tag.
 # Never re-pin that silently; accepting it takes a deliberate manual cask edit.
-if content[/version "([^"]+)"/, 1] == version
-  pinned = { "arm" => content[/arm:\s+"([0-9a-f]{64})"/, 1], "intel" => content[/intel:\s+"([0-9a-f]{64})"/, 1] }
-  fresh = { "arm" => arm_sha, "intel" => intel_sha }
-  changed = pinned.keys.reject { |k| pinned[k] == fresh[k] }
-  unless changed.empty?
-    abort changed.map { |k| "#{k} asset for #{version} changed upstream: pinned #{pinned[k]}, now #{fresh[k]}" }
-                 .push("Refusing to re-pin #{version}; edit the cask by hand if this replacement is legitimate")
-                 .join("\n")
-  end
-end
+# (Modifier-form Ruby only: the Homebrew shfmt wrapper mangles block if/end inside this string.)
+same_version = content[/version "([^"]+)"/, 1] == version
+pinned = { "arm" => content[/arm:\s+"([0-9a-f]{64})"/, 1], "intel" => content[/intel:\s+"([0-9a-f]{64})"/, 1] }
+fresh = { "arm" => arm_sha, "intel" => intel_sha }
+changed = same_version ? pinned.keys.reject { |k| pinned[k] == fresh[k] } : []
+changed.each { |k| warn "#{k} asset for #{version} changed upstream: pinned #{pinned[k]}, now #{fresh[k]}" }
+abort "Refusing to re-pin #{version}; edit the cask by hand if this replacement is legitimate" unless changed.empty?
 
 updated = content.sub(/version "[^"]+"/, %(version "#{version}"))
 updated = updated.sub(/(arm:\s+)"[0-9a-f]{64}"/) { %(#{Regexp.last_match(1)}"#{arm_sha}") }
