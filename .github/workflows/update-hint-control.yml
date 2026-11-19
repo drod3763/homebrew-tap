@@ -17,6 +17,13 @@ on:
   schedule:
     - cron: "0 8 * * 1"  # every Monday at 08:00 UTC
 
+# One run at a time, so the open-PR checksum check below always sees the branch as the
+# previous run left it and its push cannot race another run's. Queued, not cancelled
+# mid-run (GitHub keeps at most one pending run; a superseded pending run never starts).
+concurrency:
+  group: update-hint-control
+  cancel-in-progress: false
+
 jobs:
   # Bumps the cask and freezes it as an artifact. Read-only token and no persisted git
   # credentials, so nothing that touches the upstream release can push or open PRs.
