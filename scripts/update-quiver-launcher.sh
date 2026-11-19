@@ -67,6 +67,7 @@ gh_api_get "https://api.github.com/repos/${repo}/releases/tags/${tag}" >"${relea
 # asset cannot land as a "valid" checksum. Fails closed if an asset or digest is missing,
 # which is also what happens if a stable release drops the per-arch Portable.zip layout
 # (the 4.x line ships a universal DMG): the cask then needs a manual migration.
+# This runs inside $(...), where bash turns errexit off, so every step fails explicitly.
 verified_sha() {
   local asset="$1" published sha
   printf 'Looking up GitHub digest for %s...\n' "${asset}" >&2
@@ -78,10 +79,15 @@ verified_sha() {
       abort "Asset has no sha256 digest" unless digest.start_with?("sha256:")
       puts digest.delete_prefix("sha256:")
     ' "${release_json}"
-  )"
+  )" || exit 1
   printf 'Downloading + hashing %s...\n' "${asset}" >&2
-  curl -fsSL -o "${workdir}/${asset}" "${base}/${asset}"
+  curl -fsSL -o "${workdir}/${asset}" "${base}/${asset}" || exit 1
   sha="$(sha256_of "${workdir}/${asset}")"
+  if [[ ! "${sha}" =~ ^[0-9a-f]{64}$ ]]
+  then
+    printf 'Could not hash %s\n' "${asset}" >&2
+    exit 1
+  fi
   if [[ "${sha}" != "${published}" ]]
   then
     printf 'Checksum mismatch for %s: computed %s, release says %s\n' "${asset}" "${sha}" "${published}" >&2
@@ -98,6 +104,8 @@ path = ENV.fetch("CASK_PATH")
 version = ENV.fetch("VERSION")
 sha_arm = ENV.fetch("SHA_ARM")
 sha_intel = ENV.fetch("SHA_INTEL")
+raise "Refusing to write a non-sha256 arm checksum" unless sha_arm.match?(/\A[0-9a-f]{64}\z/)
+raise "Refusing to write a non-sha256 intel checksum" unless sha_intel.match?(/\A[0-9a-f]{64}\z/)
 
 content = File.read(path)
 raise "Failed to update #{path}: version line not found" unless content =~ /version "[^"]+"/
