@@ -7,8 +7,8 @@ on:
         description: "Optional release tag override (example: v4.0.0-beta.7). Leave empty for the newest GitHub release, prereleases included."
         required: false
         type: string
-  # Weekly is plenty: the app auto-updates itself, so the cask only needs to keep
-  # fresh installs current.
+  # The 4.x macOS app does not update itself, so `brew upgrade` is the update path.
+  # Weekly keeps that reasonably current; dispatch manually for an urgent beta.
   schedule:
     - cron: "0 8 * * 1"  # every Monday at 08:00 UTC
 

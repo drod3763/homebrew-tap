@@ -20,8 +20,8 @@ cask "quiver-launcher@beta" do
     end
   end
 
-  # The app ships Tauri's built-in updater (signed .sig assets on GitHub Releases).
-  auto_updates true
+  # No auto_updates: on macOS the 4.x app only points at the release page
+  # (update.rs Kind::Elsewhere), so updates ship through `brew upgrade`.
   depends_on :macos
 
   app "Quiver Launcher.app"
