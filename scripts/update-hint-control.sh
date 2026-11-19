@@ -46,6 +46,26 @@ then
 fi
 
 version="${tag}"
+
+# Refuse to move the cask backwards. If upstream withdraws its newest release, "latest" can
+# resolve to an older tag; a scheduled run then leaves the cask untouched (no diff, so no
+# PR). An explicitly requested older tag fails unless the rollback is opted into.
+current="$(ruby -e 'puts File.read(ARGV[0])[/version "([^"]+)"/, 1]' "${cask_path}")"
+if ruby -e 'exit(Gem::Version.new(ARGV[0]) < Gem::Version.new(ARGV[1]) ? 0 : 1)' "${version}" "${current}"
+then
+  if [[ "${HINT_CONTROL_ALLOW_DOWNGRADE:-}" == "1" ]]
+  then
+    printf 'Downgrading %s -> %s (HINT_CONTROL_ALLOW_DOWNGRADE=1)\n' "${current}" "${version}" >&2
+  elif [[ $# -eq 1 ]]
+  then
+    printf 'Refusing to downgrade %s -> %s; set HINT_CONTROL_ALLOW_DOWNGRADE=1 to roll back\n' "${current}" "${version}" >&2
+    exit 1
+  else
+    printf 'Latest release %s is older than the cask (%s); leaving the cask unchanged\n' "${version}" "${current}"
+    exit 0
+  fi
+fi
+
 base="https://github.com/${upstream}/releases/download/${tag}"
 
 if command -v shasum >/dev/null 2>&1

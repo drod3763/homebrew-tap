@@ -7,6 +7,11 @@ on:
         description: "Optional release tag override (example: 1.17.3). Leave empty for the latest GitHub release."
         required: false
         type: string
+      allow_downgrade:
+        description: "Allow pinning a version older than the current cask (explicit rollback)."
+        required: false
+        type: boolean
+        default: false
   # Weekly is plenty: the app auto-updates itself, so the cask only needs to keep
   # fresh installs current.
   schedule:
@@ -52,7 +57,12 @@ jobs:
           # Never interpolate the dispatch input into the script text: a caller could
           # break out of the quotes. Bind it as an env var and expand it quoted.
           VERSION: ${{ inputs.version }}
+          ALLOW_DOWNGRADE: ${{ inputs.allow_downgrade }}
         run: |
+          # The updater refuses to move the cask to an older version unless opted in.
+          if [ "$ALLOW_DOWNGRADE" = "true" ]; then
+            export HINT_CONTROL_ALLOW_DOWNGRADE=1
+          fi
           if [ -n "$VERSION" ]; then
             scripts/update-hint-control.sh "$VERSION"
           else
