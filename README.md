@@ -31,3 +31,9 @@ brew "<formula>"
 - Local update to latest stable appcast entry: `scripts/update-openin-helper.sh`
 - Local update to a specific version: `scripts/update-openin-helper.sh 4.3.5`
 - GitHub Actions update: run `update-openin-helper` (optionally provide a version input)
+
+## Updating `hint-control` cask
+
+- Local update to the latest GitHub release: `scripts/update-hint-control.sh`
+- Local update to a specific release tag: `scripts/update-hint-control.sh 1.17.3`
+- GitHub Actions update: run `update-hint-control` (optionally provide a version input)

@@ -17,6 +17,7 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Casks/pocket-sync.rb`** — Cask for Pocket Sync, a desktop app for managing an Analogue Pocket (universal DMG from `neil-morrison44/pocket-sync` GitHub Releases; signed + notarized; the app self-updates via Tauri, so the cask sets `auto_updates true`)
 - **`Casks/quiver-launcher.rb`** — Cask for Quiver Launcher 3.x stable, a launcher for community game ports/recompilations (per-arch `Portable.zip` from `tgeorgiadis/quiver-launcher` GitHub Releases; ad-hoc signed, so a `preflight_steps` strips quarantine; self-updates via Velopack, so `auto_updates true`). The 3.x build is "portable" and would keep its library loose in `/Applications`; a `postflight_steps` seeds `~/Library/Application Support/QuiverLauncher/settings.json` so it uses that folder instead
 - **`Casks/quiver-launcher@beta.rb`** — Cask for the Quiver Launcher 4.x line, which ships only as GitHub prereleases (universal DMG; unsigned, quarantine stripped; no `auto_updates`, since the 4.x macOS build only links to the release page, so updates ship through this tap). Listed in `audit_exceptions/github_prerelease_allowlist.json` (`"any"`) so the prerelease audit passes. Installs as `Quiver Launcher.app` with its own bundle id, so it can sit beside the stable cask
+- **`Casks/hint-control.rb`** — Cask for HINT Control, a Compose Multiplatform app for T-Mobile Home Internet gateways (per-arch zips from `zacharee/HINTControl` GitHub Releases; notarized; tags have no `v` prefix; the app self-updates via Sparkle, so the cask sets `auto_updates true`)
 
 ## Updating packages
 
@@ -165,6 +166,21 @@ scripts/update-quiver-launcher-beta.sh v4.0.0-beta.7
 
 Takes the newest non-draft entry from the releases list (`releases/latest` skips prereleases), checks `QuiverLauncher_<version>_universal.dmg` against its GitHub asset `digest`, and patches `Casks/quiver-launcher@beta.rb`.
 
+### hint-control (auto-detects latest GitHub release)
+
+```bash
+# Local — latest GitHub release
+scripts/update-hint-control.sh
+
+# Local — specific release tag (upstream tags have no `v` prefix)
+scripts/update-hint-control.sh 1.17.3
+
+# GitHub Actions (workflow_dispatch or weekly Monday cron)
+# Workflow: update-hint-control — version input optional
+```
+
+Upstream ships separate per-arch zips (`hintcontrol-<version>-mac-aarch64.zip` / `-mac-amd64.zip`) and no `.sha256` sidecar. For each arch the script reads the asset's GitHub `digest` and refuses to pin unless it matches the downloaded zip (fails closed if the asset or digest is missing), then patches `version` and both `sha256 arm:`/`intel:` values in `Casks/hint-control.rb`.
+
 ## Validating changes
 
 ```bash
@@ -178,6 +194,7 @@ brew style --cask drod3763/tap/amphetamine-power-protect
 brew style --cask drod3763/tap/pocket-sync
 brew style --cask drod3763/tap/quiver-launcher
 brew style --cask drod3763/tap/quiver-launcher@beta
+brew style --cask drod3763/tap/hint-control
 
 # Audit
 brew audit --strict drod3763/tap/rar
@@ -189,6 +206,7 @@ brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 brew audit --cask --strict drod3763/tap/pocket-sync
 brew audit --cask --strict drod3763/tap/quiver-launcher
 brew audit --cask --strict drod3763/tap/quiver-launcher@beta
+brew audit --cask --strict drod3763/tap/hint-control
 ```
 
 CI (`tests.yml`) runs `brew test-bot` across Ubuntu, macOS Intel, and macOS ARM on every push/PR.
