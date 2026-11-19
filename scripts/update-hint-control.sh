@@ -88,6 +88,8 @@ gh_api_get "https://api.github.com/repos/${upstream}/releases/tags/${tag}" >"${r
 # Upstream ships no .sha256 sidecar, but GitHub records a digest for every release asset;
 # require it to agree with the download before pinning, so a partial download or a swapped
 # asset cannot land as a "valid" checksum. Fails closed if the asset or digest is missing.
+# Callers run this inside $(...), where bash disables errexit, so every step returns
+# explicitly on failure instead of relying on `set -e`.
 verified_sha() {
   local asset="$1"
   local published sha
@@ -101,12 +103,18 @@ verified_sha() {
       abort "Asset has no sha256 digest" unless digest.start_with?("sha256:")
       puts digest.delete_prefix("sha256:")
     ' <"${release_json}"
-  )"
+  )" || return 1
 
   printf 'Downloading + hashing %s...\n' "${asset}" >&2
-  curl -fsSL -o "${workdir}/${asset}" "${base}/${asset}"
+  curl -fsSL -o "${workdir}/${asset}" "${base}/${asset}" || return 1
+  # A failed hash leaves sha empty; the format check below rejects it.
   sha="$(sha256_of "${workdir}/${asset}")"
   rm -f "${workdir}/${asset}"
+  if [[ ! "${published}" =~ ^[0-9a-f]{64}$ || ! "${sha}" =~ ^[0-9a-f]{64}$ ]]
+  then
+    printf 'Malformed checksum for %s: computed %q, release says %q\n' "${asset}" "${sha}" "${published}" >&2
+    return 1
+  fi
   if [[ "${sha}" != "${published}" ]]
   then
     printf 'Checksum mismatch for %s: computed %s, release says %s\n' "${asset}" "${sha}" "${published}" >&2
@@ -123,6 +131,7 @@ path = ENV.fetch("CASK_PATH")
 version = ENV.fetch("VERSION")
 arm_sha = ENV.fetch("ARM_SHA")
 intel_sha = ENV.fetch("INTEL_SHA")
+[arm_sha, intel_sha].each { |s| raise "Refusing to write malformed sha256 #{s.inspect}" unless s.match?(/\A[0-9a-f]{64}\z/) }
 
 content = File.read(path)
 raise "Failed to update #{path}: version line not found" unless content =~ /version "[^"]+"/
