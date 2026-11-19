@@ -25,13 +25,20 @@ gh_api_get() {
   fi
 }
 
-# releases/latest skips prereleases, so take the newest non-draft entry from the list
-# (the API returns newest first).
+# releases/latest skips prereleases, so walk the list (the API returns newest first) and
+# take the newest non-draft release that ships this cask's universal DMG. Matching on the
+# asset keeps a later 3.x stable release (per-arch Portable.zip, tracked by the stable
+# cask) from hijacking detection and blocking beta updates.
 detect_latest() {
   gh_api_get "https://api.github.com/repos/${repo}/releases?per_page=30" |
     ruby -rjson -e '
-      release = JSON.parse(STDIN.read).find { |r| !r["draft"] }
-      abort "No published releases found" unless release
+      ships_dmg = lambda { |r|
+        tag = r["tag_name"].to_s
+        dmg = "QuiverLauncher_#{tag.delete_prefix("v")}_universal.dmg"
+        !r["draft"] && tag.match?(/\Av\d+(\.\d+)+(-beta\.\d+)?\z/) && Array(r["assets"]).any? { |a| a["name"] == dmg }
+      }
+      release = JSON.parse(STDIN.read).find(&ships_dmg)
+      abort "No published release ships a QuiverLauncher_<version>_universal.dmg" unless release
       puts release.fetch("tag_name")
     '
 }
