@@ -126,6 +126,9 @@ jobs:
         # Both jobs check out the triggering commit, and a re-run of a failed run reuses it,
         # so main may have moved on since the updater compared versions. Repeat its
         # downgrade and same-version rules against main as it is now.
+        # Not covered here, by design (docs/hint-control-updater.md): an older PR merged
+        # after a newer one (GitHub's merge conflict blocks that; a real fix is a tap-wide
+        # required check), and main advancing in the seconds before create-pull-request.
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           ALLOW_DOWNGRADE: ${{ inputs.allow_downgrade }}
@@ -182,6 +185,9 @@ jobs:
           echo "exists=true" >> "$GITHUB_OUTPUT"
 
       - name: Create pull request
+        # A maintainer push to the update branch in the seconds after the check above can
+        # still be overwritten. Accepted: closing it means replacing this action with a
+        # hand-written push (see docs/hint-control-updater.md, "Races measured in seconds").
         if: steps.open_pr.outputs.exists != 'true'
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
         with:

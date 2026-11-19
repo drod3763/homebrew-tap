@@ -112,6 +112,8 @@ verified_sha() {
   sha="$(sha256_of "${workdir}/${asset}")"
   # The cask installs "HINT Control.app" from the zip root; a correctly hashed zip that
   # nests or renames the bundle would still break installs, so require it.
+  # Deliberately no Mach-O arch or launch check: that tests upstream's build, not this pin.
+  # See docs/hint-control-updater.md ("Checking the app inside the zip").
   listing="$(zipinfo -1 "${workdir}/${asset}")" || return 1
   rm -f "${workdir}/${asset}"
   if ! grep -qxF "${app_entry}" <<<"${listing}"

@@ -37,3 +37,4 @@ brew "<formula>"
 - Local update to the latest GitHub release: `scripts/update-hint-control.sh`
 - Local update to a specific release tag: `scripts/update-hint-control.sh 1.17.3`
 - GitHub Actions update: run `update-hint-control` (optionally provide a version input)
+- What the updater guards against, and what it deliberately leaves out: [docs/hint-control-updater.md](docs/hint-control-updater.md)
