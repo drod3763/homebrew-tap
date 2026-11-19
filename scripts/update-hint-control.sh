@@ -133,15 +133,25 @@ arm_sha = ENV.fetch("ARM_SHA")
 intel_sha = ENV.fetch("INTEL_SHA")
 [arm_sha, intel_sha].each { |s| raise "Refusing to write malformed sha256 #{s.inspect}" unless s.match?(/\A[0-9a-f]{64}\z/) }
 
-content = File.read(path)
+# Read, check and write under one exclusive lock on the cask itself, so a concurrent run
+# cannot slip a newer pin in between the version checks and the write. The early downgrade
+# check above only avoids needless downloads; this one, against the file as it is now, is
+# authoritative. The file is rewritten in place: renaming a new file over it would leave a
+# waiting run holding the lock on the old, stale inode.
+cask = File.open(path, "r+")
+cask.flock(File::LOCK_EX)
+content = cask.read
 raise "Failed to update #{path}: version line not found" unless content =~ /version "[^"]+"/
+on_disk = content[/version "([^"]+)"/, 1]
+downgrade = Gem::Version.new(version) < Gem::Version.new(on_disk)
+abort "Refusing to downgrade #{on_disk} -> #{version}; set HINT_CONTROL_ALLOW_DOWNGRADE=1 to roll back" if downgrade && ENV["HINT_CONTROL_ALLOW_DOWNGRADE"] != "1"
 raise "Failed to update #{path}: arm sha256 not found" unless content =~ /arm:\s+"[0-9a-f]{64}"/
 raise "Failed to update #{path}: intel sha256 not found" unless content =~ /intel:\s+"[0-9a-f]{64}"/
 
 # Same version, different bytes means upstream replaced assets under an existing tag.
 # Never re-pin that silently; accepting it takes a deliberate manual cask edit.
 # (Modifier-form Ruby only: the Homebrew shfmt wrapper mangles block if/end inside this string.)
-same_version = content[/version "([^"]+)"/, 1] == version
+same_version = on_disk == version
 pinned = { "arm" => content[/arm:\s+"([0-9a-f]{64})"/, 1], "intel" => content[/intel:\s+"([0-9a-f]{64})"/, 1] }
 fresh = { "arm" => arm_sha, "intel" => intel_sha }
 changed = same_version ? pinned.keys.reject { |k| pinned[k] == fresh[k] } : []
@@ -156,7 +166,10 @@ raise "Failed to update #{path}: version" unless updated.include?(%(version "#{v
 raise "Failed to update #{path}: arm sha256" unless updated.include?(%("#{arm_sha}"))
 raise "Failed to update #{path}: intel sha256" unless updated.include?(%("#{intel_sha}"))
 
-File.write(path, updated)
+cask.rewind
+cask.write(updated)
+cask.truncate(cask.pos)
+cask.close
 '
 
 printf 'Updated %s to %s (arm %s, intel %s)\n' "${cask_path}" "${version}" "${arm_sha}" "${intel_sha}"
