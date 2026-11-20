@@ -15,6 +15,8 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Casks/herdr-server.rb`** — Cask for Herdr Server.app (a bundled, resident parent for `herdr server` so macOS can grant it Local Network/TCC consent, herdrdev/herdr#808; zip from `drod3763/herdr-server-app` GitHub Releases; the Local Network grant is bound to each build's ad-hoc signature, so an upgrade replaces the granted bundle and the launcher must be re-granted after it restarts)
 - **`Casks/amphetamine-power-protect.rb`** — Cask for Power Protect for Amphetamine (runs a `.pkg` from a DMG in the x74353 GitHub repo that fixes Closed-Display Mode power transitions; upstream has no releases, so the DMG URL is pinned to a commit SHA and the version is derived from that commit's timestamp)
 - **`Casks/pocket-sync.rb`** — Cask for Pocket Sync, a desktop app for managing an Analogue Pocket (universal DMG from `neil-morrison44/pocket-sync` GitHub Releases; signed + notarized; the app self-updates via Tauri, so the cask sets `auto_updates true`)
+- **`Casks/quiver-launcher.rb`** — Cask for Quiver Launcher 3.x stable, a launcher for community game ports/recompilations (per-arch `Portable.zip` from `tgeorgiadis/quiver-launcher` GitHub Releases; ad-hoc signed, so a `preflight_steps` strips quarantine; self-updates via Velopack, so `auto_updates true`). The 3.x build is "portable" and would keep its library loose in `/Applications`; a `postflight_steps` seeds `~/Library/Application Support/QuiverLauncher/settings.json` so it uses that folder instead
+- **`Casks/quiver-launcher@beta.rb`** — Cask for the Quiver Launcher 4.x line, which ships only as GitHub prereleases (universal DMG; unsigned, quarantine stripped; no `auto_updates`, since the 4.x macOS build only links to the release page, so updates ship through this tap). Listed in `audit_exceptions/github_prerelease_allowlist.json` (`"any"`) so the prerelease audit passes. Installs as `Quiver Launcher.app` with its own bundle id, so it can sit beside the stable cask
 
 ## Updating packages
 
@@ -133,6 +135,36 @@ scripts/update-pocket-sync.sh v7.1.1
 
 Upstream publishes no `.sha256` sidecar, so the script reads the asset's `digest` from the GitHub releases API and refuses to pin unless it matches the SHA256 of the downloaded `Pocket.Sync_<version>_universal.dmg` (fails closed if the asset or digest is missing), then patches `Casks/pocket-sync.rb`.
 
+### quiver-launcher (auto-detects latest stable GitHub release)
+
+```bash
+# Local — latest stable release
+scripts/update-quiver-launcher.sh
+
+# Local — specific release tag
+scripts/update-quiver-launcher.sh v3.5.1
+
+# GitHub Actions (workflow_dispatch or weekly Monday cron)
+# Workflow: update-quiver-launcher — version input optional
+```
+
+Checks both `QuiverLauncher-osx-{arm64,x64}-Portable.zip` against their GitHub asset `digest`s (fails closed if either is missing or mismatched), then patches `version` and the `arm:`/`intel:` SHA256s in `Casks/quiver-launcher.rb`. Rejects prerelease tags. Once 4.x goes stable with the universal-DMG layout, this updater fails closed and the cask needs a manual migration.
+
+### quiver-launcher@beta (auto-detects newest release, prereleases included)
+
+```bash
+# Local — newest non-draft release
+scripts/update-quiver-launcher-beta.sh
+
+# Local — specific release tag
+scripts/update-quiver-launcher-beta.sh v4.0.0-beta.7
+
+# GitHub Actions (workflow_dispatch or weekly Monday cron)
+# Workflow: update-quiver-launcher-beta — version input optional
+```
+
+Takes the newest non-draft entry from the releases list (`releases/latest` skips prereleases), checks `QuiverLauncher_<version>_universal.dmg` against its GitHub asset `digest`, and patches `Casks/quiver-launcher@beta.rb`.
+
 ## Validating changes
 
 ```bash
@@ -144,6 +176,8 @@ brew style --formula drod3763/tap/herdr-mx
 brew style --cask drod3763/tap/openin-helper
 brew style --cask drod3763/tap/amphetamine-power-protect
 brew style --cask drod3763/tap/pocket-sync
+brew style --cask drod3763/tap/quiver-launcher
+brew style --cask drod3763/tap/quiver-launcher@beta
 
 # Audit
 brew audit --strict drod3763/tap/rar
@@ -153,6 +187,8 @@ brew audit --strict drod3763/tap/herdr-mx
 brew audit --cask --strict drod3763/tap/openin-helper
 brew audit --cask --strict drod3763/tap/amphetamine-power-protect
 brew audit --cask --strict drod3763/tap/pocket-sync
+brew audit --cask --strict drod3763/tap/quiver-launcher
+brew audit --cask --strict drod3763/tap/quiver-launcher@beta
 ```
 
 CI (`tests.yml`) runs `brew test-bot` across Ubuntu, macOS Intel, and macOS ARM on every push/PR.
