@@ -1,6 +1,6 @@
 cask "pocket-sync" do
-  version "7.1.1"
-  sha256 "05a90e085681906a0e3b2f7febfceae8288ab946c3024119e319cb7a3e2cd8f5"
+  version "7.2.0"
+  sha256 "3d1468e78dc2878e4f4d3739e4da679eed564bc32661366c2f39998f7dd2c94f"
 
   url "https://github.com/neil-morrison44/pocket-sync/releases/download/v#{version}/Pocket.Sync_#{version}_universal.dmg"
   name "Pocket Sync"
