@@ -1,8 +1,8 @@
 class TruenasMcp < Formula
   desc "MCP server enabling AI models to interact with the TrueNAS API"
   homepage "https://github.com/truenas/truenas-mcp"
-  url "https://github.com/truenas/truenas-mcp/archive/refs/tags/v0.0.6.tar.gz"
-  sha256 "012e5195b5842c3b9ca62bb29ba7b349966fd15f449b189c4b4732594a39f9c0"
+  url "https://github.com/truenas/truenas-mcp/archive/refs/tags/v0.0.7.tar.gz"
+  sha256 "e665f59359c65383d9ab94a01dc65289c3a65cf5c02c07995ea8da1d31f1b553"
   license "GPL-3.0-only"
 
   livecheck do
