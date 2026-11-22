@@ -18,6 +18,8 @@ A Homebrew third-party tap (`drod3763/tap`) hosting these packages:
 - **`Casks/quiver-launcher.rb`** — Cask for Quiver Launcher 3.x stable, a launcher for community game ports/recompilations (per-arch `Portable.zip` from `tgeorgiadis/quiver-launcher` GitHub Releases; ad-hoc signed, so a `preflight_steps` strips quarantine; self-updates via Velopack, so `auto_updates true`). The 3.x build is "portable" and would keep its library loose in `/Applications`; a `postflight_steps` seeds `~/Library/Application Support/QuiverLauncher/settings.json` so it uses that folder instead
 - **`Casks/quiver-launcher@beta.rb`** — Cask for the Quiver Launcher 4.x line, which ships only as GitHub prereleases (universal DMG; unsigned, quarantine stripped; no `auto_updates`, since the 4.x macOS build only links to the release page, so updates ship through this tap). Listed in `audit_exceptions/github_prerelease_allowlist.json` (`"any"`) so the prerelease audit passes. Installs as `Quiver Launcher.app` with its own bundle id, so it can sit beside the stable cask
 
+Packages that must stay private (e.g. the invite-only `rex` beta) live in the separate private tap `drod3763/private` (repo `drod3763/homebrew-private`, checked out at `~/Projects/homebrew-private`). That repo is the pre-2026-11-04 `homebrew-tap` renamed, so it holds this tap's full earlier PR and commit history; this public repo was restarted from a single commit on 2026-11-04.
+
 ## Updating packages
 
 ### RAR (manual version bump required)
