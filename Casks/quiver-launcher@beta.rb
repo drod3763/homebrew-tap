@@ -1,6 +1,6 @@
 cask "quiver-launcher@beta" do
-  version "4.0.0-beta.7"
-  sha256 "220fe4f1cbd418b3f9a29e532b00b6cc163796d9ef8e416e5c3e631488720e92"
+  version "4.0.0-beta.9"
+  sha256 "2bf6daf36ffdee7f6f4b06f08d7684235ee963b584473d674e833b0a11d6c179"
 
   url "https://github.com/tgeorgiadis/quiver-launcher/releases/download/v#{version}/QuiverLauncher_#{version}_universal.dmg"
   name "Quiver Launcher Beta"
