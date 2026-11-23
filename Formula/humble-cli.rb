@@ -1,8 +1,8 @@
 class HumbleCli < Formula
   desc "CLI for downloading your Humble Bundle purchases"
   homepage "https://github.com/smbl64/humble-cli"
-  url "https://github.com/smbl64/humble-cli/archive/refs/tags/v0.23.2.tar.gz"
-  sha256 "1376ae8f071f48d389637147bb26967a24dc8a25513a78796947fff5af40b5bd"
+  url "https://github.com/smbl64/humble-cli/archive/refs/tags/v2.0.1.tar.gz"
+  sha256 "d6b1efb45383ed206f93eee3dc4697a4a955455d52d99fec1d6137dfc07e8b42"
   license "MIT"
 
   livecheck do
